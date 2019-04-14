@@ -1,3 +1,10 @@
+#!/usr/bin/env python
+# coding=UTF-8
+'''
+@Author: Jake Gu
+@Date: 2019-04-13 20:00:11
+@LastEditTime: 2019-04-13 20:00:37
+'''
 ##
 # @file   dct.py
 # @author Yibo Lin
@@ -14,7 +21,7 @@ from torch import nn
 import dct_cpp
 import dct_cuda
 
-import dreamplace.ops.dct.src.discrete_spectral_transform as discrete_spectral_transform
+import discrete_spectral_transform as discrete_spectral_transform
 
 def dct(x, expk, algorithm):
     """compute discrete cosine transformation, DCT II, using N-FFT or 2N-FFT 

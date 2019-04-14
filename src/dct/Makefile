@@ -1,4 +1,4 @@
-SITE_PACKAGE = # --user or empty 
+SITE_PACKAGE = --user
 
 all:
 	@echo "site-package: $(SITE_PACKAGE)"
