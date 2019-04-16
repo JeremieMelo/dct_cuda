@@ -48,6 +48,190 @@ inline bool isPowerOf2(T val)
 }
 
 template <typename T>
+inline void swap(T& x, T& y)
+{
+    T tmp = x; 
+    x = y; 
+    y = tmp; 
+}
+
+/// Precompute cosine values needed for N-point dct
+/// @param  cos  size N - 1 buffer on GPU, contains the result after function call
+/// @param  N    the length of target dct, must be power of 2
+template <typename TValue>
+void precompute_dct_cos(TValue *cos, int N)
+{
+    // The input length must be power of 2
+    if (! isPowerOf2<int>(N))
+    {
+        printf("Input length is not power of 2.\n");
+        assert(0); 
+    }
+
+    // create the array on host 
+    TValue* cos_host = new TValue [N]; 
+
+    int offset = 0;
+    int halfLen = N / 2;
+    // while (halfLen)
+    // {
+    //     TValue phaseStep = PI / (halfLen << 1);
+    //     TValue phase_start = 0.5 * phaseStep;
+    //     #pragma omp parallel for
+    //     for (int i = 0; i < halfLen; ++i)
+    //     {
+    //         TValue phase = phase_start + i * phaseStep;
+    //         cos_host[offset + i] = 0.5 / std::cos(phase);
+    //     }
+    //     offset += halfLen;
+    //     halfLen >>= 1;
+    // }
+    while (halfLen)
+    {
+        TValue phaseStep = 0.5 * PI / halfLen;
+        TValue phase = 0.5 * phaseStep;
+        for (int i = 0; i < halfLen; ++i)
+        {
+            cos_host[offset + i] = 0.5 / std::cos(phase);
+            phase += phaseStep;
+        }
+        offset += halfLen;
+        halfLen /= 2;
+    }
+
+    // copy to GPU 
+    cudaMemcpy(cos, cos_host, N*sizeof(TValue), cudaMemcpyHostToDevice); 
+
+    delete [] cos_host; 
+}
+
+template <typename TValue, typename TIndex>
+__global__ void computeDctForward(const TValue *curr, TValue *next, const TValue *cos, TIndex N, TIndex len, TIndex halfLen, TIndex cosOffset)
+{
+    TIndex halfN = (N >> 1);
+    // TIndex halfMN = M * halfN;
+    //for (TIndex thread_id = halfMN_by_gridDim*blockIdx.x + threadIdx.x; thread_id < halfMN_by_gridDim*(blockIdx.x+1); thread_id += blockDim.x)
+    for (TIndex thread_id = blockIdx.x * blockDim.x + threadIdx.x; thread_id < halfN; thread_id += blockDim.x * gridDim.x)
+    {
+        TIndex rest = thread_id & (halfN - 1);
+        TIndex i = rest & (halfLen - 1);
+        TIndex offset = (thread_id - i) * 2;
+
+        next[offset + i] = curr[offset + i] + curr[offset + len - i - 1];
+        //next[offset + i + halfLen] = (curr[offset + i] - curr[offset + len - i - 1]) * cos[cosOffset + i];
+    }
+    //for (TIndex thread_id = halfMN_by_gridDim*blockIdx.x + threadIdx.x; thread_id < halfMN_by_gridDim*(blockIdx.x+1); thread_id += blockDim.x)
+    for (TIndex thread_id = blockIdx.x * blockDim.x + threadIdx.x; thread_id < halfN; thread_id += blockDim.x * gridDim.x)
+    {
+        TIndex rest = thread_id & (halfN - 1);
+        TIndex i = rest & (halfLen - 1);
+        TIndex offset = (thread_id - i) * 2;
+
+        //next[offset + i] = curr[offset + i] + curr[offset + len - i - 1];
+        next[offset + i + halfLen] = (curr[offset + i] - curr[offset + len - i - 1]) * cos[cosOffset + i];
+    }
+}
+
+template <typename TValue, typename TIndex>
+__global__ void computeDctBackward(const TValue *curr, TValue *next, TIndex N, TIndex len, TIndex halfLen)
+{
+    
+    TIndex halfN = (N >> 1);
+    // TIndex halfMN = M * halfN;
+    //TIndex halfMN_by_gridDim = halfMN/gridDim.x;
+    //for (TIndex thread_id = halfMN_by_gridDim*blockIdx.x + threadIdx.x; thread_id < halfMN_by_gridDim*(blockIdx.x+1); thread_id += blockDim.x)
+    for (TIndex thread_id = blockIdx.x * blockDim.x + threadIdx.x; thread_id < halfN; thread_id += blockDim.x * gridDim.x)
+    {
+        TIndex rest = thread_id & (halfN - 1);
+        TIndex i = rest & (halfLen - 1);
+        TIndex offset = (thread_id - i) * 2;
+
+        next[offset + i * 2] = curr[offset + i];
+        next[offset + i * 2 + 1] = (i + 1 == halfLen) ? curr[offset + len - 1] : curr[offset + halfLen + i] + curr[offset + halfLen + i + 1];
+    }
+}
+
+template <typename T>
+__global__ void normalize(T* x, const T* y, const int N){
+    int tid = blockDim.x * blockIdx.x + threadIdx.x;
+    if (tid < N) {
+        x[tid] = y[tid] / N * 2;
+    }
+}
+
+/// The implementation of fast Discrete Cosine Transform (DCT) algorithm and its inverse (IDCT) are Lee's algorithms
+/// Algorithm reference: A New Algorithm to Compute the Discrete Cosine Transform, by Byeong Gi Lee, 1984
+///
+/// Lee's algorithm has a recursive structure in nature.
+/// Here is a sample recursive implementation: https://www.nayuki.io/page/fast-discrete-cosine-transform-algorithms
+///   
+/// My implementation here is iterative, which is more efficient than the recursive version.
+/// Here is a sample iterative implementation: https://www.codeproject.com/Articles/151043/Iterative-Fast-1D-Forvard-DCT
+
+/// Compute y[k] = sum_n=0..N-1 (x[n] * cos((n + 0.5) * k * PI / N)), for k = 0..N-1
+/// 
+/// @param  vec   length M * N sequence to be transformed in last dimension
+/// @param  out   length M * N helping buffer, which is also the output
+/// @param  buf   length M * N helping buffer
+/// @param  cos   length N - 1, stores cosine values precomputed by function 'precompute_dct_cos'
+/// @param  M     length of dimension 0 of vec  
+/// @param  N     length of dimension 1 of vec, must be power of 2
+template <typename TValue>
+void dct_ref(const TValue *vec, TValue *out, TValue* buf, const TValue *cos, int N)
+{
+    int block_count = (N + TPB - 1) / TPB; 
+    int thread_count = TPB; 
+
+    // The input length must be power of 2
+    if (! isPowerOf2<int>(N))
+    {
+        printf("Input length is not power of 2.\n");
+        assert(0); 
+    }
+
+    // Pointers point to the beginning indices of two adjacent iterations
+    TValue *curr = buf; 
+    TValue *next = out; 
+
+    // 'temp' used to store date of two adjacent iterations
+    // Copy 'vec' to the first N element in 'temp'
+    cudaMemcpy(curr, vec, N * sizeof(TValue), cudaMemcpyDeviceToDevice);
+
+    // Current bufferfly length and half length
+    int len = N;
+    int halfLen = len / 2;
+
+    // Iteratively bi-partition sequences into sub-sequences
+    int cosOffset = 0;
+    while (halfLen)
+    {
+        computeDctForward<<<block_count, thread_count>>>(curr, next, cos, N, len, halfLen, cosOffset);
+        cudaDeviceSynchronize();
+        swap(curr, next);
+        cosOffset += halfLen;
+        len = halfLen;
+        halfLen /= 2;
+    }
+
+    // Bottom-up form the final DCT solution
+    // Note that the case len = 2 will do nothing, so we start from len = 4
+    len = 4;
+    halfLen = 2;
+    while (halfLen < N)
+    {
+        computeDctBackward<<<block_count, thread_count>>>(curr, next, N, len, halfLen);
+        cudaDeviceSynchronize();
+        swap(curr, next);
+        halfLen = len;
+        len *= 2;
+    }
+
+    // Populate the final results into 'out'
+    normalize<TValue><<<block_count, thread_count>>>(out, curr, N);
+    
+}
+
+template <typename T>
 __global__ void dct_1d_lee_kernel(const T* x, T* y, const int N)
 {
     const int tid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -73,16 +257,21 @@ void dct_1d_lee(
 {
     T *d_x;
     T *d_y;
+    T *scratch;
+    T *d_cos;
     dim3 gridSize((N + TPB - 1) / TPB, 1, 1);
     dim3 blockSize(TPB, 1, 1);
     size_t size = N * sizeof(T);
 
     cudaMalloc((void **)&d_x, size);
     cudaMalloc((void **)&d_y, size);
+    cudaMalloc((void **)&scratch, size);
+    cudaMalloc((void **)&d_cos, size);
 
     cudaMemcpy(d_x, h_x, size, cudaMemcpyHostToDevice);
     
-    dct_1d_lee_kernel<T><<<gridSize, blockSize>>>(d_x, d_y, N);
+    precompute_dct_cos<T>(d_cos, N);
+    dct_ref<T>(d_x, d_y, scratch, d_cos, N);
     cudaDeviceSynchronize();
     cudaMemcpy(h_y, d_y, size, cudaMemcpyDeviceToHost);
 
