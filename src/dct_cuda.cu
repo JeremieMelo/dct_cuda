@@ -10,7 +10,7 @@
 
 #define PI (3.141592653589793238462643383279502884197169399375105820974944592307816406286208998628034825342117067982148086513282306647093844609550582231725359408128481)
 #define TPB (32)
-#define epsilon (1e-4)
+#define epsilon (1e-2)
 #define NUM_RUNS (5)
 #define DEBUG
 
@@ -56,10 +56,10 @@ __global__ void dct_1d_naive_kernel(const T* x, T* y, const int N)
     {
         for (int i = 0; i < N; i++)
         {
-            y[tid] += x[i] * __cosf(PI / N * (i + 0.5) * tid);       
+            y[tid] += x[i] * cos(PI * (i + 0.5) / N * tid);       
         }
         
-        y[tid] = y[tid] / N * 2;
+        y[tid] = y[tid] * 2 / N;
     }
 
 }
@@ -95,10 +95,11 @@ int validate(T* result_cuda, T* result_gt, const int N)
 {
     for(int i = 0; i < N; ++i)
     {
-        int flag = std::abs(result_cuda[i] - result_gt[i]) < epsilon;
+        int flag = (std::abs(result_cuda[i] - result_gt[i]) / std::abs(result_gt[i])) < epsilon;
         if(flag == 0)
         {
-            return 0;
+            printf("%d:, cuda_res: %f, gt_res: %f\n", i, result_cuda[i], result_gt[i]);
+            // return 0;
         }
     }
     return 1;
@@ -135,17 +136,18 @@ int load_data(T* &data, T* &result)
     return N;
 }
 
+typedef double dtype;
 int main()
 {
-    float *h_x;
-    float *h_y;
-    float *h_gt;
+    dtype *h_x;
+    dtype *h_y;
+    dtype *h_gt;
 
-    int N = load_data<float>(h_x, h_gt);
-    h_y = new float[N];
+    int N = load_data<dtype>(h_x, h_gt);
+    h_y = new dtype[N];
     
 
-    for(int i = 0;i<10;++i)
+    for(int i = 0;i<20;++i)
     {
         printf("%d: %f\n", i, h_x[i]);
     }
@@ -153,15 +155,15 @@ int main()
     for(int i=0; i<NUM_RUNS; ++i)
     {
         timer_start = get_globaltime();
-        dct_1d_naive<float>(h_x, h_y, N);
+        dct_1d_naive<dtype>(h_x, h_y, N);
         timer_stop = get_globaltime();
-        int flag = validate<float>(h_y, h_gt, N);
+        int flag = validate<dtype>(h_y, h_gt, N);
         printf("[I] validation: %d\n", flag);
         printf("[D] dct 1D takes %g ms\n", (timer_stop-timer_start)*get_timer_period());
         total_time += (timer_stop-timer_start)*get_timer_period();
     }
         
-    // int flag = validate<float>(h_y, h_gt, N);
+    // int flag = validate<dtype>(h_y, h_gt, N);
     // printf("[D] dct 1D takes %g ms\n", (timer_stop-timer_start)*get_timer_period());
     printf("[D] dct 1D takes average %g ms\n", total_time/NUM_RUNS);
     // printf("[I] validation: %d\n", flag);
