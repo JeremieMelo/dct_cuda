@@ -3,7 +3,7 @@
 '''
 @Author: Jake Gu
 @Date: 2019-04-13 19:59:17
-@LastEditTime: 2019-04-13 19:59:33
+@LastEditTime: 2019-04-15 17:23:04
 '''
 ##
 # @file   dct_unitest.py
@@ -23,6 +23,7 @@ import scipy
 from scipy import fftpack
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from src import dct 
+from src import dct_lee
 #from src import dct_lee as dct  
 from src import discrete_spectral_transform
 sys.path.pop()
@@ -440,79 +441,80 @@ class DXTOpTest(unittest.TestCase):
         np.testing.assert_allclose(dst_value.data.numpy(), golden_value, atol=1e-14)
 
 def eval_runtime():
-    #x = torch.tensor([1, 2, 7, 9, 20, 31], dtype=torch.float64)
-    #print(dct_N(x))
+    # x = torch.tensor([1, 2, 7, 9, 20, 31], dtype=torch.float64)
+    # print(dct_N(x))
 
     N = 512
-    runs = 10
+    runs = 100
     x = torch.empty(10, N, N, dtype=torch.float64).uniform_(0, 10.0).cuda()
     perm = discrete_spectral_transform.get_perm(N, dtype=torch.int64, device=x.device)
     expk = discrete_spectral_transform.get_expk(N, dtype=x.dtype, device=x.device)
 
-    #x_numpy = x.data.cpu().numpy()
-    #tt = time.time()
-    #for i in range(runs): 
-    #    y = fftpack.dct(fftpack.dct(x_numpy[i%10].T, norm=None).T, norm=None)
-    #print("scipy takes %.3f sec" % (time.time()-tt))
+    x_numpy = x.data.cpu().numpy()
+    tt = time.time()
+    for i in range(runs): 
+       y = fftpack.dct(fftpack.dct(x_numpy[0].T, norm=None).T/N, norm=None)/N
+    print("CPU: scipy takes %.3f ms" % ((time.time()-tt)/runs*1000))
 
-    ## 9s for 200 iterations 1024x1024 on GTX 1080
-    #torch.cuda.synchronize()
-    #tt = time.time()
-    ##with torch.autograd.profiler.profile(use_cuda=True) as prof:
-    #for i in range(runs): 
-    #    y_2N = dct2_2N(x[0], expk0=expk, expk1=expk)
-    #torch.cuda.synchronize()
-    ##print(prof)
-    #print("dct_2N takes %.3f ms" % ((time.time()-tt)/runs*1000))
+    # 9s for 200 iterations 1024x1024 on GTX 1080
+    torch.cuda.synchronize()
+    tt = time.time()
+    #with torch.autograd.profiler.profile(use_cuda=True) as prof:
+    for i in range(runs): 
+       y_2N = discrete_spectral_transform.dct2_2N(x[0], expk0=expk, expk1=expk)
+    torch.cuda.synchronize()
+    #print(prof)
+    print("Pytorch: dct2_2N takes %.3f ms" % ((time.time()-tt)/runs*1000))
 
-    ## 11s for 200 iterations 1024x1024 on GTX 1080
-    #torch.cuda.synchronize()
-    #tt = time.time()
-    ##with torch.autograd.profiler.profile(use_cuda=True) as prof:
-    #for i in range(runs): 
-    #    y_N = discrete_spectral_transform.dct2_N(x[i%10], perm0=perm, expk0=expk, perm1=perm, expk1=expk)
-    #torch.cuda.synchronize()
-    ##print(prof)
-    #print("dct_N takes %.3f ms" % ((time.time()-tt)/runs*1000))
+    # 11s for 200 iterations 1024x1024 on GTX 1080
+    torch.cuda.synchronize()
+    tt = time.time()
+    #with torch.autograd.profiler.profile(use_cuda=True) as prof:
+    for i in range(runs): 
+       y_N = discrete_spectral_transform.dct2_N(x[0], perm0=perm, expk0=expk, perm1=perm, expk1=expk)
+    torch.cuda.synchronize()
+    #print(prof)
+    print("Pytorch: dct2_N takes %.3f ms" % ((time.time()-tt)/runs*1000))
 
-    #dct2func = dct.DCT2(expk, expk, algorithm='2N')
-    #torch.cuda.synchronize()
-    #tt = time.time()
-    ##with torch.autograd.profiler.profile(use_cuda=True) as prof:
-    #for i in range(runs): 
-    #    y_N = dct2func.forward(x[0])
-    #torch.cuda.synchronize()
-    ##print(prof)
-    #print("DCT2Function 2N takes %.3f ms" % ((time.time()-tt)/runs*1000))
+    dct2func = dct.DCT2(expk, expk, algorithm='2N')
+    torch.cuda.synchronize()
+    tt = time.time()
+    #with torch.autograd.profiler.profile(use_cuda=True) as prof:
+    for i in range(runs): 
+       y_N = dct2func.forward(x[0])
+    torch.cuda.synchronize()
+    #print(prof)
+    print("CUDA: DCT2Function 2N takes %.3f ms" % ((time.time()-tt)/runs*1000))
 
-    #dct2func = dct.DCT2(expk, expk, algorithm='N')
-    #torch.cuda.synchronize()
-    #tt = time.time()
-    ##with torch.autograd.profiler.profile(use_cuda=True) as prof:
-    #for i in range(runs): 
-    #    y_N = dct2func.forward(x[0])
-    #torch.cuda.synchronize()
-    ##print(prof)
-    #print("DCT2Function takes %.3f ms" % ((time.time()-tt)/runs*1000))
+    dct2func = dct.DCT2(expk, expk, algorithm='N')
+    torch.cuda.synchronize()
+    tt = time.time()
+    #with torch.autograd.profiler.profile(use_cuda=True) as prof:
+    for i in range(runs): 
+       y_N = dct2func.forward(x[0])
+    torch.cuda.synchronize()
+    #print(prof)
+    print("CUDA: DCT2Function takes %.3f ms" % ((time.time()-tt)/runs*1000))
 
-    #dct2func = dct_lee.DCT2(expk, expk)
-    #torch.cuda.synchronize()
-    #tt = time.time()
-    ##with torch.autograd.profiler.profile(use_cuda=True) as prof:
-    #for i in range(runs): 
-    #    y_N = dct2func.forward(x[i%10])
-    #torch.cuda.synchronize()
-    ##print(prof)
-    #print("DCT2Function lee takes %.3f ms" % ((time.time()-tt)/runs*1000))
+    dct2func = dct_lee.DCT2(expk, expk)
+    torch.cuda.synchronize()
+    tt = time.time()
+    #with torch.autograd.profiler.profile(use_cuda=True) as prof:
+    for i in range(runs): 
+       y_N = dct2func.forward(x[0])
+    torch.cuda.synchronize()
+    #print(prof)
+    print("CUDA: DCT2Function lee takes %.3f ms" % ((time.time()-tt)/runs*1000))
+    exit()
 
-    #torch.cuda.synchronize()
-    #tt = time.time()
-    ##with torch.autograd.profiler.profile(use_cuda=True) as prof:
-    #for i in range(runs): 
-    #    y_N = discrete_spectral_transform.idct2_2N(x[i%10], expk0=expk, expk1=expk)
-    #torch.cuda.synchronize()
-    ##print(prof)
-    #print("idct2_2N takes %.3f ms" % ((time.time()-tt)/runs*1000))
+    torch.cuda.synchronize()
+    tt = time.time()
+    #with torch.autograd.profiler.profile(use_cuda=True) as prof:
+    for i in range(runs): 
+       y_N = discrete_spectral_transform.idct2_2N(x[0], expk0=expk, expk1=expk)
+    torch.cuda.synchronize()
+    #print(prof)
+    print("idct2_2N takes %.3f ms" % ((time.time()-tt)/runs*1000))
 
     idct2func = dct.IDCT2(expk, expk, algorithm='2N')
     torch.cuda.synchronize()
@@ -533,7 +535,7 @@ def eval_runtime():
     torch.cuda.synchronize()
     #print(prof)
     print("IDCT2Function takes %.3f ms" % ((time.time()-tt)/runs*1000))
-    exit()
+    # exit()
 
     #torch.cuda.synchronize()
     #tt = time.time()
@@ -624,4 +626,5 @@ def eval_runtime():
 if __name__ == '__main__':
     torch.manual_seed(10)
     np.random.seed(10)
-    unittest.main()
+    # unittest.main()
+    eval_runtime()

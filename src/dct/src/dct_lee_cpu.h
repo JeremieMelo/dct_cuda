@@ -1,3 +1,8 @@
+/*
+ * @Author: Jake Gu
+ * @Date: 2019-04-02 16:34:45
+ * @LastEditTime: 2019-04-15 18:01:42
+ */
 /**
  * @file   dct_lee_cpu.h
  * @author Yibo Lin
