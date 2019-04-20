@@ -444,17 +444,19 @@ def eval_runtime():
     # x = torch.tensor([1, 2, 7, 9, 20, 31], dtype=torch.float64)
     # print(dct_N(x))
 
-    N = 262144
+    N = 4096
     runs = 100
     x = torch.empty(10, N, N, dtype=torch.float64).uniform_(0, 10.0).cuda()
     perm = discrete_spectral_transform.get_perm(N, dtype=torch.int64, device=x.device)
     expk = discrete_spectral_transform.get_expk(N, dtype=x.dtype, device=x.device)
 
+    print("N = {}".format(N))
+
     x_numpy = x.data.cpu().numpy()
     tt = time.time()
     for i in range(runs): 
        y = fftpack.dct(fftpack.dct(x_numpy[0].T, norm=None).T/N, norm=None)/N
-    print("CPU: scipy takes %.3f ms" % ((time.time()-tt)/runs*1000))
+    print("CPU: scipy.fftpack.dct2d takes %f ms" % ((time.time()-tt)/runs*1000))
 
     # 9s for 200 iterations 1024x1024 on GTX 1080
     torch.cuda.synchronize()
@@ -464,7 +466,7 @@ def eval_runtime():
        y_2N = discrete_spectral_transform.dct2_2N(x[0], expk0=expk, expk1=expk)
     torch.cuda.synchronize()
     #print(prof)
-    print("Pytorch: dct2_2N takes %.3f ms" % ((time.time()-tt)/runs*1000))
+    print("Pytorch: dct2d_2N takes %.5f ms" % ((time.time()-tt)/runs*1000))
 
     # 11s for 200 iterations 1024x1024 on GTX 1080
     torch.cuda.synchronize()
@@ -474,7 +476,7 @@ def eval_runtime():
        y_N = discrete_spectral_transform.dct2_N(x[0], perm0=perm, expk0=expk, perm1=perm, expk1=expk)
     torch.cuda.synchronize()
     #print(prof)
-    print("Pytorch: dct2_N takes %.3f ms" % ((time.time()-tt)/runs*1000))
+    print("Pytorch: dct2d_N takes %.5f ms" % ((time.time()-tt)/runs*1000))
 
     dct2func = dct.DCT2(expk, expk, algorithm='2N')
     torch.cuda.synchronize()
@@ -484,7 +486,7 @@ def eval_runtime():
        y_N = dct2func.forward(x[0])
     torch.cuda.synchronize()
     #print(prof)
-    print("CUDA: DCT2Function 2N takes %.3f ms" % ((time.time()-tt)/runs*1000))
+    print("CUDA: DCT2d_2N Function takes %.5f ms" % ((time.time()-tt)/runs*1000))
 
     dct2func = dct.DCT2(expk, expk, algorithm='N')
     torch.cuda.synchronize()
@@ -494,7 +496,7 @@ def eval_runtime():
        y_N = dct2func.forward(x[0])
     torch.cuda.synchronize()
     #print(prof)
-    print("CUDA: DCT2Function takes %.3f ms" % ((time.time()-tt)/runs*1000))
+    print("CUDA: DCT2d_N Function takes %.5f ms" % ((time.time()-tt)/runs*1000))
 
     dct2func = dct_lee.DCT2(expk, expk)
     torch.cuda.synchronize()
@@ -504,7 +506,7 @@ def eval_runtime():
        y_N = dct2func.forward(x[0])
     torch.cuda.synchronize()
     #print(prof)
-    print("CUDA: DCT2Function lee takes %.3f ms" % ((time.time()-tt)/runs*1000))
+    print("CUDA: DCT2dFunction lee takes %.5f ms" % ((time.time()-tt)/runs*1000))
     exit()
 
     torch.cuda.synchronize()
@@ -514,7 +516,7 @@ def eval_runtime():
        y_N = discrete_spectral_transform.idct2_2N(x[0], expk0=expk, expk1=expk)
     torch.cuda.synchronize()
     #print(prof)
-    print("idct2_2N takes %.3f ms" % ((time.time()-tt)/runs*1000))
+    print("idct2_2N takes %.5f ms" % ((time.time()-tt)/runs*1000))
 
     idct2func = dct.IDCT2(expk, expk, algorithm='2N')
     torch.cuda.synchronize()
@@ -524,7 +526,7 @@ def eval_runtime():
         y_N = idct2func.forward(x[i%10])
     torch.cuda.synchronize()
     #print(prof)
-    print("IDCT2Function 2N takes %.3f ms" % ((time.time()-tt)/runs*1000))
+    print("IDCT2Function 2N takes %.5f ms" % ((time.time()-tt)/runs*1000))
 
     idct2func = dct.IDCT2(expk, expk, algorithm='N')
     torch.cuda.synchronize()
@@ -534,7 +536,7 @@ def eval_runtime():
         y_N = idct2func.forward(x[i%10])
     torch.cuda.synchronize()
     #print(prof)
-    print("IDCT2Function takes %.3f ms" % ((time.time()-tt)/runs*1000))
+    print("IDCT2Function takes %.5f ms" % ((time.time()-tt)/runs*1000))
     # exit()
 
     #torch.cuda.synchronize()
@@ -544,7 +546,7 @@ def eval_runtime():
     #    y_N = discrete_spectral_transform.idxt(x[i%10], 0, expk=expk)
     #torch.cuda.synchronize()
     ##print(prof)
-    #print("idxt takes %.3f ms" % ((time.time()-tt)/runs*1000))
+    #print("idxt takes %.5f ms" % ((time.time()-tt)/runs*1000))
 
     #idxct_func = dct.IDXCT(expk)
     #torch.cuda.synchronize()
@@ -554,7 +556,7 @@ def eval_runtime():
     #    y_N = idxct_func.forward(x[i%10])
     #torch.cuda.synchronize()
     ##print(prof)
-    #print("IDXCTFunction takes %.3f ms" % ((time.time()-tt)/runs*1000))
+    #print("IDXCTFunction takes %.5f ms" % ((time.time()-tt)/runs*1000))
 
     torch.cuda.synchronize()
     tt = time.time()
@@ -563,7 +565,7 @@ def eval_runtime():
         y_N = torch.rfft(x[i%10].view([1, N, N]), signal_ndim=2, onesided=False)
     torch.cuda.synchronize()
     #print(prof)
-    print("fft2 takes %.3f ms" % ((time.time()-tt)/runs*1000))
+    print("fft2 takes %.5f ms" % ((time.time()-tt)/runs*1000))
 
     torch.cuda.synchronize()
     tt = time.time()
@@ -572,7 +574,7 @@ def eval_runtime():
         y_N = discrete_spectral_transform.idcct2(x[i%10], expk_0=expk, expk_1=expk)
     torch.cuda.synchronize()
     #print(prof)
-    print("idcct2 takes %.3f ms" % ((time.time()-tt)/runs*1000))
+    print("idcct2 takes %.5f ms" % ((time.time()-tt)/runs*1000))
 
     func = dct.IDCCT2(expk, expk)
     torch.cuda.synchronize()
@@ -582,7 +584,7 @@ def eval_runtime():
         y_N = func.forward(x[i%10])
     torch.cuda.synchronize()
     #print(prof)
-    print("IDCCT2Function takes %.3f ms" % ((time.time()-tt)/runs*1000))
+    print("IDCCT2Function takes %.5f ms" % ((time.time()-tt)/runs*1000))
 
     torch.cuda.synchronize()
     tt = time.time()
@@ -591,7 +593,7 @@ def eval_runtime():
         y_N = discrete_spectral_transform.idcst2(x[i%10], expk_0=expk, expk_1=expk)
     torch.cuda.synchronize()
     #print(prof)
-    print("idcst2 takes %.3f ms" % ((time.time()-tt)/runs*1000))
+    print("idcst2 takes %.5f ms" % ((time.time()-tt)/runs*1000))
 
     func = dct.IDCST2(expk, expk)
     torch.cuda.synchronize()
@@ -601,7 +603,7 @@ def eval_runtime():
         y_N = func.forward(x[i%10])
     torch.cuda.synchronize()
     #print(prof)
-    print("IDCST2Function takes %.3f ms" % ((time.time()-tt)/runs*1000))
+    print("IDCST2Function takes %.5f ms" % ((time.time()-tt)/runs*1000))
 
     torch.cuda.synchronize()
     tt = time.time()
@@ -610,7 +612,7 @@ def eval_runtime():
         y_N = discrete_spectral_transform.idsct2(x[i%10], expk_0=expk, expk_1=expk)
     torch.cuda.synchronize()
     #print(prof)
-    print("idsct2 takes %.3f ms" % ((time.time()-tt)/runs*1000))
+    print("idsct2 takes %.5f ms" % ((time.time()-tt)/runs*1000))
 
     func = dct.IDSCT2(expk, expk)
     torch.cuda.synchronize()
@@ -620,7 +622,7 @@ def eval_runtime():
         y_N = func.forward(x[i%10])
     torch.cuda.synchronize()
     #print(prof)
-    print("IDSCT2Function takes %.3f ms" % ((time.time()-tt)/runs*1000))
+    print("IDSCT2Function takes %.5f ms" % ((time.time()-tt)/runs*1000))
 
 
 if __name__ == '__main__':

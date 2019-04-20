@@ -8,13 +8,20 @@
 #include <fstream>
 #include <assert.h>
 #include <cooperative_groups.h>
+#include <thrust/host_vector.h>
+#include <thrust/device_vector.h>
+#include <thrust/functional.h>
+#include <thrust/gather.h>
+#include <thrust/scan.h>
+#include <thrust/iterator/counting_iterator.h>
+#include <thrust/iterator/transform_iterator.h>
 using namespace cooperative_groups;
 namespace cg = cooperative_groups;
 
 #define PI (3.141592653589793238462643383279502884197169399375105820974944592307816406286208998628034825342117067982148086513282306647093844609550582231725359408128481)
 #define TPB (32)
 #define epsilon (1e-2)
-#define NUM_RUNS (2)
+#define NUM_RUNS (100)
 
 #define checkCUDA(status) \
 {\
@@ -57,27 +64,66 @@ inline bool isPowerOf2(T val)
     return val && (val & (val - 1)) == 0;
 }
 
+// convert a linear index to a linear index in the transpose 
+struct transpose_index : public thrust::unary_function<size_t,size_t>
+{
+    size_t m, n;
+
+    __host__ __device__
+    transpose_index(size_t _m, size_t _n) : m(_m), n(_n) {}
+
+    __host__ __device__
+    size_t operator()(size_t linear_index)
+    {
+        size_t i = linear_index / n;
+        size_t j = linear_index % n;
+
+        return m * j + i;
+    }
+};
+
+
+// transpose an M-by-N array
 template <typename T>
-__global__ void dct_1d_naive_kernel(const T* x, T* y, const int N)
+void transpose(T* &src_ptr, T* &dst_ptr, size_t M, size_t N)
+{
+    thrust::device_ptr<T> src_thrust_ptr(src_ptr);
+    thrust::device_ptr<T> dst_thrust_ptr(dst_ptr);
+    
+    thrust::device_vector<T> src(src_thrust_ptr, src_thrust_ptr + M * N);
+    thrust::device_vector<T> dst(dst_thrust_ptr, dst_thrust_ptr + M * N);
+    
+    thrust::counting_iterator<size_t> indices(0);
+
+    thrust::gather
+    (thrust::make_transform_iterator(indices, transpose_index(N, M)),
+    thrust::make_transform_iterator(indices, transpose_index(N, M)) + dst.size(),
+    src.begin(),dst.begin());
+    dst_ptr = thrust::raw_pointer_cast(dst.data());
+}
+
+template <typename T>
+__global__ void dct_1d_naive_kernel(const T* x_ptr, T* y_ptr, const int N)
 {
     const int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    const int rid = blockIdx.y;
+    const T* x = x_ptr + N * rid;
+    T* y = y_ptr + N * rid;
     if(tid < N)
     {
         for (int i = 0; i < N; i++)
         {
             y[tid] += x[i] * cos(PI * (i + 0.5) / N * tid);
         }
-
         y[tid] = y[tid] * 2 / N;
     }
 }
 
 template <typename T>
-__global__ void dct_2d_naive_kernel(T* x, T* y, const int M, const int N)
+__global__ void dct_2d_kernel_1(T* x, T* y, const int M, const int N)
 {
     const int xtid = blockIdx.x * blockDim.x + threadIdx.x;
     const int ytid = blockIdx.y * blockDim.y + threadIdx.y;
-    grid_group grid = this_grid();
 
     if(xtid < N && ytid < M)
     {
@@ -85,20 +131,27 @@ __global__ void dct_2d_naive_kernel(T* x, T* y, const int M, const int N)
             y[ytid * N + xtid] += x[ytid * N + j] * cos(PI * (j + 0.5) / N * xtid);
         }    
     }
-    grid.sync();
-    x[ytid * N + xtid] = 0;
-    grid.sync();
-    if(xtid < N && ytid < M)
-    {
-        for (int j = 0; j < M; ++j) {
-            x[ytid * N + xtid] += y[j * N + xtid] * cos(PI * (j + 0.5) / M * ytid);
-        }
-    }
-    x[ytid * N + xtid] = x[ytid * N + xtid] / (M * N) * 4;
 }
 
 template <typename T>
-__global__ void dct_2d_naive_kernel_old(const T* x, T* y, const int M, const int N)
+__global__ void dct_2d_kernel_2(T* x, T* y, const int M, const int N)
+{
+    const int xtid = blockIdx.x * blockDim.x + threadIdx.x;
+    const int ytid = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if(xtid < N && ytid < M)
+    {
+        x[ytid * N + xtid] = 0;
+        for (int j = 0; j < M; ++j) {
+            x[ytid * N + xtid] += y[j * N + xtid] * cos(PI * (j + 0.5) / M * ytid);
+        }
+        x[ytid * N + xtid] = x[ytid * N + xtid] / (M * N) * 4;
+    }
+    
+}
+
+template <typename T>
+__global__ void dct_2d_naive_kernel(const T* x, T* y, const int M, const int N)
 {
     const int xtid = blockIdx.x * blockDim.x + threadIdx.x;
     const int ytid = blockIdx.y * blockDim.y + threadIdx.y;
@@ -134,16 +187,29 @@ void dct_2d_naive(
     cudaMemset(d_y, 0, size);
     cudaMemcpy(d_x, h_x, size, cudaMemcpyHostToDevice);
 
-
+    #if 1
     dim3 gridSize((N + TPB - 1) / TPB, (M + TPB - 1) / TPB, 1);
     dim3 blockSize(TPB, TPB, 1);
-    // dct_2d_naive_kernel<T><<<gridSize, blockSize>>>(d_x, d_y, M, N);
-    void **args = new void* [4];
-    args[0] = d_x;
-    args[1] = d_y;
-    args[2] = &M;
-    args[3] = &N;
-    cudaLaunchCooperativeKernel((const void *)dct_2d_naive_kernel<T>, gridSize, blockSize, args);
+    // dct_2d_naive_kernel<<<gridSize, blockSize>>>(d_x, d_y, M, N);
+    dct_2d_kernel_1<<<gridSize, blockSize>>>(d_x, d_y, M, N);
+    dct_2d_kernel_2<<<gridSize, blockSize>>>(d_x, d_y, M, N);
+    // void **args = new void* [4];
+    // args[0] = d_x;
+    // args[1] = d_y;
+    // args[2] = &M;
+    // args[3] = &N;
+    // cudaLaunchCooperativeKernel((const void *)dct_2d_naive_kernel<T>, gridSize, blockSize, args);
+    #endif
+    #if 0
+    dim3 gridSize1((N + TPB - 1) / TPB, M, 1);
+    dim3 gridSize2((M + TPB - 1) / TPB, N, 1);
+    dim3 blockSize(TPB, 1, 1);
+    //dct_1d_naive_kernel<T><<<gridSize1, blockSize>>>(d_x, d_y, N);
+    transpose<T>(d_x, d_y, M, N);
+    cudaDeviceSynchronize();
+    
+    //dct_1d_naive_kernel<T><<<gridSize2, blockSize>>>(d_x, d_y, M);
+    #endif
     cudaDeviceSynchronize();
     
     cudaMemcpy(h_y, d_x, size, cudaMemcpyDeviceToHost);
@@ -262,7 +328,7 @@ int main()
         timer_stop = get_globaltime();
         int flag = validate2D<dtype>(h_y, h_gt, 32, 32);
         printf("[I] validation: %d\n", flag);
-        printf("[D] dct 1D takes %g ms\n", (timer_stop-timer_start)*get_timer_period());
+        printf("[D] dct 2D takes %g ms\n", (timer_stop-timer_start)*get_timer_period());
         total_time += (timer_stop-timer_start)*get_timer_period();
     }
 
