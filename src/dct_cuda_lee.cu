@@ -48,11 +48,79 @@ inline bool isPowerOf2(T val)
 }
 
 template <typename T>
-inline void swap(T& x, T& y)
+inline void swap(T& x, T& ''''''''''''''''''y)
 {
     T tmp = x; 
     x = y; 
     y = tmp; 
+}
+
+inline __device__ __host__ int LogBase2(uint64_t n)
+{
+    static const int table[64] = {
+        0, 58, 1, 59, 47, 53, 2, 60, 39, 48, 27, 54, 33, 42, 3, 61,
+        51, 37, 40, 49, 18, 28, 20, 55, 30, 34, 11, 43, 14, 22, 4, 62,
+        57, 46, 52, 38, 26, 32, 41, 50, 36, 17, 19, 29, 10, 13, 21, 56,
+        45, 25, 31, 35, 16, 9, 12, 44, 24, 15, 8, 23, 7, 6, 5, 63 };
+
+    n |= n >> 1;
+    n |= n >> 2;
+    n |= n >> 4;
+    n |= n >> 8;
+    n |= n >> 16;
+    n |= n >> 32;
+
+    return table[(n * 0x03f6eaf2cd271461) >> 58];
+}
+
+/// Precompute cosine values needed for N-point dct
+/// @param  cos  size N - 1 buffer on GPU, contains the result after function call
+/// @param  N    the length of target dct, must be power of 2
+template <typename TValue>
+__global__ void precompute_dct_cos_kernel_backup(TValue *d_cos, int N)
+{
+    const int tid = blockDim.x * blockIdx.x + threadIdx.x;
+    if (tid < N - 1)
+    {
+        int sum = N / 2;
+        int halfLen = N / 2;
+        while (tid >= sum) {
+            halfLen = halfLen / 2;
+            sum += halfLen;
+        }
+        TValue phase = (0.5 + tid - (sum - halfLen)) * PI / (halfLen << 1);
+        d_cos[tid] = 0.5 / cos(phase);
+    }
+    else if (tid == N - 1)
+    {
+        d_cos[tid] = 0;
+    }
+}
+
+/// Precompute cosine values needed for N-point dct
+/// @param  cos  size N - 1 buffer on GPU, contains the result after function call
+/// @param  N    the length of target dct, must be power of 2
+template <typename TValue>
+__global__ void precompute_dct_cos_kernel(TValue *d_cos, int N, int log_N)
+{
+    const int tid = blockDim.x * blockIdx.x + threadIdx.x;
+    const int total_height = log_N;
+    if (tid < N - 1)
+    {
+        int k = N - tid - 1;
+        // int total_height = LogBase2(N);
+        int height = LogBase2(k);
+        // int len = N / (1 << (total_height - height - 1));
+        int len = 1 << (height + 1);
+        int i = len - k - 1;
+        
+        TValue phase = (0.5 + i) * PI / len;
+        d_cos[tid] = 0.5 / cos(phase);
+    }
+    else if (tid == N - 1)
+    {
+        d_cos[tid] = 0;
+    }
 }
 
 /// Precompute cosine values needed for N-point dct
@@ -67,61 +135,65 @@ void precompute_dct_cos(TValue *cos, int N)
         printf("Input length is not power of 2.\n");
         assert(0); 
     }
+    timer_start = get_globaltime();
 
     // create the array on host 
     TValue* cos_host = new TValue [N]; 
 
     int offset = 0;
     int halfLen = N / 2;
-    // while (halfLen)
-    // {
-    //     TValue phaseStep = PI / (halfLen << 1);
-    //     TValue phase_start = 0.5 * phaseStep;
-    //     #pragma omp parallel for
-    //     for (int i = 0; i < halfLen; ++i)
-    //     {
-    //         TValue phase = phase_start + i * phaseStep;
-    //         cos_host[offset + i] = 0.5 / std::cos(phase);
-    //     }
-    //     offset += halfLen;
-    //     halfLen >>= 1;
-    // }
     while (halfLen)
     {
-        TValue phaseStep = 0.5 * PI / halfLen;
-        TValue phase = 0.5 * phaseStep;
+        TValue phaseStep = PI / (halfLen << 1);
+        // TValue phase_start = 0.5 * phaseStep;
+        // #pragma omp parallel for
         for (int i = 0; i < halfLen; ++i)
         {
+            TValue phase = (0.5 + i) * phaseStep;
             cos_host[offset + i] = 0.5 / std::cos(phase);
-            phase += phaseStep;
         }
         offset += halfLen;
-        halfLen /= 2;
+        halfLen >>= 1;
     }
+    // printf("last cos: %f\n", cos_host[N-1]);
+    // while (halfLen)
+    // {
+    //     TValue phaseStep = 0.5 * PI / halfLen;
+    //     TValue phase = 0.5 * phaseStep;
+    //     for (int i = 0; i < halfLen; ++i)
+    //     {
+    //         cos_host[offset + i] = 0.5 / std::cos(phase);
+    //         phase += phaseStep;
+    //     }
+    //     offset += halfLen;
+    //     halfLen /= 2;
+    // }
 
     // copy to GPU 
-    cudaMemcpy(cos, cos_host, N*sizeof(TValue), cudaMemcpyHostToDevice); 
+    cudaMemcpy(cos, cos_host, N*sizeof(TValue), cudaMemcpyHostToDevice);
+     
 
     delete [] cos_host; 
+    timer_stop = get_globaltime();
+    printf("[D] precompute cos takes %g ms\n", (timer_stop-timer_start)*get_timer_period());
 }
 
 template <typename TValue, typename TIndex>
 __global__ void computeDctForward(const TValue *curr, TValue *next, const TValue *cos, TIndex N, TIndex len, TIndex halfLen, TIndex cosOffset)
 {
     TIndex halfN = (N >> 1);
-    // TIndex halfMN = M * halfN;
-    //for (TIndex thread_id = halfMN_by_gridDim*blockIdx.x + threadIdx.x; thread_id < halfMN_by_gridDim*(blockIdx.x+1); thread_id += blockDim.x)
-    for (TIndex thread_id = blockIdx.x * blockDim.x + threadIdx.x; thread_id < halfN; thread_id += blockDim.x * gridDim.x)
+    TIndex stride = blockDim.x * gridDim.x;
+    for (TIndex thread_id = blockIdx.x * blockDim.x + threadIdx.x; thread_id < halfN; thread_id += stride)
     {
         TIndex rest = thread_id & (halfN - 1);
         TIndex i = rest & (halfLen - 1);
         TIndex offset = (thread_id - i) * 2;
 
         next[offset + i] = curr[offset + i] + curr[offset + len - i - 1];
-        //next[offset + i + halfLen] = (curr[offset + i] - curr[offset + len - i - 1]) * cos[cosOffset + i];
+        // next[offset + i + halfLen] = (curr[offset + i] - curr[offset + len - i - 1]) * cos[cosOffset + i];
     }
-    //for (TIndex thread_id = halfMN_by_gridDim*blockIdx.x + threadIdx.x; thread_id < halfMN_by_gridDim*(blockIdx.x+1); thread_id += blockDim.x)
-    for (TIndex thread_id = blockIdx.x * blockDim.x + threadIdx.x; thread_id < halfN; thread_id += blockDim.x * gridDim.x)
+    // for (TIndex thread_id = halfMN_by_gridDim*blockIdx.x + threadIdx.x; thread_id < halfMN_by_gridDim*(blockIdx.x+1); thread_id += blockDim.x)
+    for (TIndex thread_id = blockIdx.x * blockDim.x + threadIdx.x; thread_id < halfN; thread_id += stride)
     {
         TIndex rest = thread_id & (halfN - 1);
         TIndex i = rest & (halfLen - 1);
@@ -206,11 +278,11 @@ void dct_ref(const TValue *vec, TValue *out, TValue* buf, const TValue *cos, int
     while (halfLen)
     {
         computeDctForward<<<block_count, thread_count>>>(curr, next, cos, N, len, halfLen, cosOffset);
-        cudaDeviceSynchronize();
-        swap(curr, next);
         cosOffset += halfLen;
         len = halfLen;
         halfLen /= 2;
+        cudaDeviceSynchronize();
+        swap(curr, next);
     }
 
     // Bottom-up form the final DCT solution
@@ -220,10 +292,11 @@ void dct_ref(const TValue *vec, TValue *out, TValue* buf, const TValue *cos, int
     while (halfLen < N)
     {
         computeDctBackward<<<block_count, thread_count>>>(curr, next, N, len, halfLen);
-        cudaDeviceSynchronize();
-        swap(curr, next);
         halfLen = len;
         len *= 2;
+        cudaDeviceSynchronize();
+        swap(curr, next);
+        
     }
 
     // Populate the final results into 'out'
@@ -270,7 +343,9 @@ void dct_1d_lee(
 
     cudaMemcpy(d_x, h_x, size, cudaMemcpyHostToDevice);
     
-    precompute_dct_cos<T>(d_cos, N);
+    // precompute_dct_cos<T>(d_cos, N);
+    precompute_dct_cos_kernel<T><<<gridSize, blockSize>>>(d_cos, N, (int)log2(N));
+    cudaDeviceSynchronize();
     dct_ref<T>(d_x, d_y, scratch, d_cos, N);
     cudaDeviceSynchronize();
     cudaMemcpy(h_y, d_y, size, cudaMemcpyDeviceToHost);

@@ -3,7 +3,7 @@
 '''
 @Author: Jake Gu
 @Date: 2019-04-15 19:19:32
-@LastEditTime: 2019-04-16 17:03:30
+@LastEditTime: 2019-04-16 21:44:22
 '''
 import torch
 from torch.autograd import Function, Variable
@@ -12,7 +12,7 @@ import scipy
 from scipy import fftpack
 import numpy as np
 
-def gen_testcase(N = 256**2, dim=1):
+def gen_testcase_1d(N = 512**2, dim=1):
     if(dim == 1):
         x = torch.empty(N, dtype=torch.float64).uniform_(0, 10.0)
         with open("test_1d.dat", "w") as f:
@@ -20,6 +20,16 @@ def gen_testcase(N = 256**2, dim=1):
             for i in range(N):
                 f.write(f"{x[i]:.10f}\n")
 
+def gen_testcase_2d(M=512, N=512, dim=1):
+    if(dim == 1):
+        x = torch.empty(M, N, dtype=torch.float64).uniform_(0, 10.0)
+        x = x.view([M*N])
+        with open("test_2d.dat", "w") as f:
+            f.write(f"{M}\n")
+            f.write(f"{N}\n")
+            for i in range(M*N):
+                f.write(f"{x[i]:.10f}\n")
+                    
 def dct_1d(test_case="test_1d.dat"):
     runs = 2
     with open(test_case, "r") as f:
@@ -37,18 +47,27 @@ def dct_1d(test_case="test_1d.dat"):
         for i in range(N):
             f.write(f"{y[i]:.10f}\n")    
                 
-def dct_2d():
-    N = 512
-    runs = 10
-    # x = torch.empty(10, N, N, dtype=torch.float64).uniform_(0, 10.0).cuda()
+def dct_2d(test_case="test_2d.dat"):
+    runs = 2
+    with open(test_case, "r") as f:
+        lines = f.readlines()
+        M = int(lines[0].strip())
+        N = int(lines[1].strip())
+        x = np.resize(np.array([float(i) for i in lines[2:]]).astype(np.float64), [M, N])
 
-    x_numpy = x.data.cpu().numpy()
     tt = time.time()
     for i in range(runs): 
-       y = fftpack.dct(fftpack.dct(x_numpy[0].T, norm=None).T/N, norm=None)/N
+       y = fftpack.dct(fftpack.dct(x.T, norm=None).T/N, norm=None)/N
     print("CPU: scipy takes %.3f ms" % ((time.time()-tt)/runs*1000))
 
+    y = np.resize(y, [M*N])
+    with open("result_2d.dat", "w") as f:
+        f.write(f"{M}\n")
+        f.write(f"{N}\n")
+        for i in range(M*N):
+            f.write(f"{y[i]:.10f}\n") 
+
 if __name__ == "__main__":
-    gen_testcase()
-    dct_1d()
+    gen_testcase_2d()
+    dct_2d()
     
