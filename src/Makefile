@@ -16,7 +16,7 @@ dct_cuda_lee: dct_cuda_lee.cu
 
 dct2d_cuda: dct2d_cuda.cu
 	mkdir -p bin
-	nvcc -w $(ARCH) $(OPTIONS) -o bin/dct2d_cuda dct2d_cuda.cu
+	nvcc -w $(ARCH) $(OPTIONS) -maxrregcount 20 -o bin/dct2d_cuda dct2d_cuda.cu
 
 dct2d_cuda_lee: dct2d_cuda_lee.cu
 	mkdir -p bin

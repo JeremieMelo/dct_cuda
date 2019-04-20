@@ -21,7 +21,7 @@ namespace cg = cooperative_groups;
 #define PI (3.141592653589793238462643383279502884197169399375105820974944592307816406286208998628034825342117067982148086513282306647093844609550582231725359408128481)
 #define TPB (32)
 #define epsilon (1e-2)
-#define NUM_RUNS (100)
+#define NUM_RUNS (10)
 
 #define checkCUDA(status) \
 {\
@@ -120,7 +120,7 @@ __global__ void dct_1d_naive_kernel(const T* x_ptr, T* y_ptr, const int N)
 }
 
 template <typename T>
-__global__ void dct_2d_kernel_1(T* x, T* y, const int M, const int N)
+__global__ __launch_bounds__(1024,2) void dct_2d_kernel_1(T* x, T* y, const int M, const int N)
 {
     const int xtid = blockIdx.x * blockDim.x + threadIdx.x;
     const int ytid = blockIdx.y * blockDim.y + threadIdx.y;
@@ -134,7 +134,7 @@ __global__ void dct_2d_kernel_1(T* x, T* y, const int M, const int N)
 }
 
 template <typename T>
-__global__ void dct_2d_kernel_2(T* x, T* y, const int M, const int N)
+__global__ __launch_bounds__(1024,2) void dct_2d_kernel_2(T* x, T* y, const int M, const int N)
 {
     const int xtid = blockIdx.x * blockDim.x + threadIdx.x;
     const int ytid = blockIdx.y * blockDim.y + threadIdx.y;
@@ -242,8 +242,8 @@ int validate2D(T* result_cuda, T* result_gt, const int M, const int N)
             int flag = (std::abs(result_cuda[i*N+j] - result_gt[i*N+j]) / std::abs(result_gt[i*N+j])) < epsilon;
             if(flag == 0)
             {
-                printf("cuda_res[%d][%d]: %f, gt_res[%d][%d]: %f\n", i, j, result_cuda[i*N+j], i, j, result_gt[i*N+j]);
-                // return 0;
+                // printf("cuda_res[%d][%d]: %f, gt_res[%d][%d]: %f\n", i, j, result_cuda[i*N+j], i, j, result_gt[i*N+j]);
+                return 0;
             }
         }
     }
@@ -326,18 +326,18 @@ int main()
         timer_start = get_globaltime();
         dct_2d_naive<dtype>(h_x, h_y, M, N);
         timer_stop = get_globaltime();
-        int flag = validate2D<dtype>(h_y, h_gt, 32, 32);
+        int flag = validate2D<dtype>(h_y, h_gt, M, N);
         printf("[I] validation: %d\n", flag);
         printf("[D] dct 2D takes %g ms\n", (timer_stop-timer_start)*get_timer_period());
-        total_time += (timer_stop-timer_start)*get_timer_period();
+        total_time +=  i > 0 ? (timer_stop-timer_start)*get_timer_period() : 0;
     }
 
     // int flag = validate<dtype>(h_y, h_gt, N);
     // printf("[D] dct 1D takes %g ms\n", (timer_stop-timer_start)*get_timer_period());
-    printf("[D] dct 2D (%d * %d) takes average %g ms\n", M, N, total_time/NUM_RUNS);
+    printf("[D] dct 2D (%d * %d) takes average %g ms\n", M, N, total_time/(NUM_RUNS-1));
     // printf("[I] validation: %d\n", flag);
 
-    for(int i = 0;i<10;++i)
+    for(int i = 0; i<10; ++i)
     {
         printf("%d: %f\n", i, h_y[i]);
     }
