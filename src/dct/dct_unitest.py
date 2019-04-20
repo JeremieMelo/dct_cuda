@@ -446,7 +446,7 @@ def eval_runtime():
 
     N = 4096
     runs = 100
-    x = torch.empty(10, N, N, dtype=torch.float64).uniform_(0, 10.0).cuda()
+    x = torch.empty(10, N, N, dtype=torch.  ).uniform_(0, 10.0).cuda()
     perm = discrete_spectral_transform.get_perm(N, dtype=torch.int64, device=x.device)
     expk = discrete_spectral_transform.get_expk(N, dtype=x.dtype, device=x.device)
 

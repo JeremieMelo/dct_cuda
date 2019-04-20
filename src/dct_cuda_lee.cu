@@ -48,7 +48,7 @@ inline bool isPowerOf2(T val)
 }
 
 template <typename T>
-inline void swap(T& x, T& ''''''''''''''''''y)
+inline void swap(T& x, T& y)
 {
     T tmp = x; 
     x = y; 
