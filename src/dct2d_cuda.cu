@@ -7,7 +7,7 @@
 #include <string>
 #include <fstream>
 #include <assert.h>
-#include <cooperative_groups.h>
+
 #include <thrust/host_vector.h>
 #include <thrust/device_vector.h>
 #include <thrust/functional.h>
@@ -15,8 +15,6 @@
 #include <thrust/scan.h>
 #include <thrust/iterator/counting_iterator.h>
 #include <thrust/iterator/transform_iterator.h>
-using namespace cooperative_groups;
-namespace cg = cooperative_groups;
 
 #define PI (3.141592653589793238462643383279502884197169399375105820974944592307816406286208998628034825342117067982148086513282306647093844609550582231725359408128481)
 #define TPB (32)
