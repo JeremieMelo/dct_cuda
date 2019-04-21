@@ -11,23 +11,23 @@
 # @date   Mar 2019
 #
 
-import os 
+import os
 import sys
 import numpy as np
 import unittest
 
 import torch
 from torch.autograd import Function, Variable
-import time 
+import time
 import scipy
 from scipy import fftpack
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from src import dct 
+from src import dct
 from src import dct_lee
-#from src import dct_lee as dct  
+#from src import dct_lee as dct
 from src import discrete_spectral_transform
 sys.path.pop()
-import pdb 
+import pdb
 
 dtype = torch.float32
 
@@ -41,7 +41,7 @@ class DCTOpTest(unittest.TestCase):
         print("golden_value")
         print(golden_value)
 
-        # test cpu using N-FFT 
+        # test cpu using N-FFT
         #pdb.set_trace()
         custom = dct.DCT(algorithm='N')
         dct_value = custom.forward(x)
@@ -59,7 +59,7 @@ class DCTOpTest(unittest.TestCase):
 
         np.testing.assert_allclose(dct_value.data.numpy(), golden_value, rtol=1e-6, atol=1e-5)
 
-        # test gpu 
+        # test gpu
         custom = dct.DCT(algorithm='N')
         dct_value = custom.forward(x.cuda()).cpu()
         print("dct_value cuda")
@@ -67,7 +67,7 @@ class DCTOpTest(unittest.TestCase):
 
         np.testing.assert_allclose(dct_value.data.numpy(), golden_value, rtol=1e-6, atol=1e-5)
 
-        # test gpu 
+        # test gpu
         custom = dct.DCT(algorithm='2N')
         dct_value = custom.forward(x.cuda()).cpu()
         print("dct_value cuda")
@@ -120,7 +120,7 @@ class DCTOpTest(unittest.TestCase):
 
         np.testing.assert_allclose(dct_value.data.numpy(), golden_value, rtol=1e-5)
 
-        # test gpu 
+        # test gpu
         custom = dct.IDCT(algorithm='N')
         dct_value = custom.forward(y.cuda()).cpu()
         print("idct_value cuda")
@@ -128,7 +128,7 @@ class DCTOpTest(unittest.TestCase):
 
         np.testing.assert_allclose(dct_value.data.numpy(), golden_value, rtol=1e-5)
 
-        # test gpu 
+        # test gpu
         custom = dct.IDCT(algorithm='2N')
         dct_value = custom.forward(y.cuda()).cpu()
         print("idct_value cuda")
@@ -164,7 +164,7 @@ class DCTOpTest(unittest.TestCase):
 
         np.testing.assert_allclose(dct_value.data.numpy(), golden_value, rtol=1e-6, atol=1e-5)
 
-        # test gpu 
+        # test gpu
         custom = dct.DCT2(algorithm='N')
         dct_value = custom.forward(x.cuda()).cpu()
         print("2D dct_value cuda")
@@ -172,7 +172,7 @@ class DCTOpTest(unittest.TestCase):
 
         np.testing.assert_allclose(dct_value.data.numpy(), golden_value, rtol=1e-6, atol=1e-5)
 
-        # test gpu 
+        # test gpu
         custom = dct.DCT2(algorithm='2N')
         dct_value = custom.forward(x.cuda()).cpu()
         print("2D dct_value cuda")
@@ -194,7 +194,7 @@ class DCTOpTest(unittest.TestCase):
         print("2D golden_value")
         print(golden_value)
 
-        # test cpu using N-FFT 
+        # test cpu using N-FFT
         #pdb.set_trace()
         custom = dct.IDCT2(algorithm='N')
         dct_value = custom.forward(y)
@@ -203,7 +203,7 @@ class DCTOpTest(unittest.TestCase):
 
         np.testing.assert_allclose(dct_value.data.numpy(), golden_value, rtol=1e-6, atol=1e-5)
 
-        # test cpu using 2N-FFT 
+        # test cpu using 2N-FFT
         #pdb.set_trace()
         custom = dct.IDCT2(algorithm='2N')
         dct_value = custom.forward(y)
@@ -212,7 +212,7 @@ class DCTOpTest(unittest.TestCase):
 
         np.testing.assert_allclose(dct_value.data.numpy(), golden_value, rtol=1e-6, atol=1e-5)
 
-        # test gpu 
+        # test gpu
         custom = dct.IDCT2(algorithm='N')
         dct_value = custom.forward(y.cuda()).cpu()
         print("2D dct_value cuda")
@@ -220,7 +220,7 @@ class DCTOpTest(unittest.TestCase):
 
         np.testing.assert_allclose(dct_value.data.numpy(), golden_value, rtol=1e-6, atol=1e-5)
 
-        # test gpu 
+        # test gpu
         custom = dct.IDCT2(algorithm='2N')
         dct_value = custom.forward(y.cuda()).cpu()
         print("2D dct_value cuda")
@@ -240,7 +240,7 @@ class DCTOpTest(unittest.TestCase):
         print("2D golden_value")
         print(golden_value)
 
-        # test cpu 
+        # test cpu
         #pdb.set_trace()
         custom = dct.IDXCT()
         dct_value = custom.forward(x)
@@ -249,7 +249,7 @@ class DCTOpTest(unittest.TestCase):
 
         np.testing.assert_allclose(dct_value.data.numpy(), golden_value, atol=1e-14)
 
-        # test gpu 
+        # test gpu
         custom = dct.IDXCT()
         dct_value = custom.forward(x.cuda()).cpu()
         print("dxt_value cuda")
@@ -262,7 +262,7 @@ class DSTOpTest(unittest.TestCase):
         N = 4
         x = torch.empty(N, N, dtype=dtype).uniform_(0, 10.0)
         #x = Variable(torch.tensor([[1, 2, 7, 9, 20, 31], [4, 5, 9, 2, 1, 6]], dtype=dtype))
-        import scipy 
+        import scipy
         from scipy import fftpack
 
         #golden_value = discrete_spectral_transform.dst(x).data.numpy()
@@ -270,7 +270,7 @@ class DSTOpTest(unittest.TestCase):
         print("golden_value")
         print(golden_value)
 
-        # test cpu 
+        # test cpu
         #pdb.set_trace()
         custom = dct.DST()
         dst_value = custom.forward(x)
@@ -279,7 +279,7 @@ class DSTOpTest(unittest.TestCase):
 
         np.testing.assert_allclose(dst_value.data.numpy(), golden_value, rtol=1e-5)
 
-        # test gpu 
+        # test gpu
         custom = dct.DST()
         dst_value = custom.forward(x.cuda()).cpu()
         print("dst_value cuda")
@@ -293,7 +293,7 @@ class DSTOpTest(unittest.TestCase):
         #x = Variable(torch.tensor([[1, 2, 7, 9, 20, 31], [4, 5, 9, 2, 1, 6]], dtype=dtype))
         print("x")
         print(x)
-        import scipy 
+        import scipy
         from scipy import fftpack
 
         #y = discrete_spectral_transform.dst(x)
@@ -306,7 +306,7 @@ class DSTOpTest(unittest.TestCase):
         print("2D golden_value")
         print(golden_value)
 
-        # test cpu 
+        # test cpu
         #pdb.set_trace()
         custom = dct.IDST()
         dst_value = custom.forward(y)
@@ -315,7 +315,7 @@ class DSTOpTest(unittest.TestCase):
 
         np.testing.assert_allclose(dst_value.data.numpy(), golden_value, rtol=1e-5)
 
-        # test gpu 
+        # test gpu
         custom = dct.IDST()
         dst_value = custom.forward(y.cuda()).cpu()
         print("idst_value cuda")
@@ -335,7 +335,7 @@ class DSTOpTest(unittest.TestCase):
         print("2D golden_value")
         print(golden_value)
 
-        # test cpu 
+        # test cpu
         #pdb.set_trace()
         custom = dct.IDXST()
         dst_value = custom.forward(x)
@@ -344,7 +344,7 @@ class DSTOpTest(unittest.TestCase):
 
         np.testing.assert_allclose(dst_value.data.numpy(), golden_value, atol=1e-14)
 
-        # test gpu 
+        # test gpu
         custom = dct.IDXST()
         dst_value = custom.forward(x.cuda()).cpu()
         print("dxt_value cuda")
@@ -365,7 +365,7 @@ class DXTOpTest(unittest.TestCase):
         print("2D golden_value")
         print(golden_value)
 
-        # test cpu 
+        # test cpu
         #pdb.set_trace()
         custom = dct.IDCCT2()
         dst_value = custom.forward(x)
@@ -374,7 +374,7 @@ class DXTOpTest(unittest.TestCase):
 
         np.testing.assert_allclose(dst_value.data.numpy(), golden_value, atol=1e-14)
 
-        # test gpu 
+        # test gpu
         custom = dct.IDCCT2()
         dst_value = custom.forward(x.cuda()).cpu()
         print("dxt_value cuda")
@@ -394,7 +394,7 @@ class DXTOpTest(unittest.TestCase):
         print("2D golden_value")
         print(golden_value)
 
-        # test cpu 
+        # test cpu
         #pdb.set_trace()
         custom = dct.IDCST2()
         dst_value = custom.forward(x)
@@ -403,7 +403,7 @@ class DXTOpTest(unittest.TestCase):
 
         np.testing.assert_allclose(dst_value.data.numpy(), golden_value, atol=1e-14)
 
-        # test gpu 
+        # test gpu
         custom = dct.IDCST2()
         dst_value = custom.forward(x.cuda()).cpu()
         print("dxt_value cuda")
@@ -423,7 +423,7 @@ class DXTOpTest(unittest.TestCase):
         print("2D golden_value")
         print(golden_value)
 
-        # test cpu 
+        # test cpu
         #pdb.set_trace()
         custom = dct.IDSCT2()
         dst_value = custom.forward(x)
@@ -432,7 +432,7 @@ class DXTOpTest(unittest.TestCase):
 
         np.testing.assert_allclose(dst_value.data.numpy(), golden_value, atol=1e-14)
 
-        # test gpu 
+        # test gpu
         custom = dct.IDSCT2()
         dst_value = custom.forward(x.cuda()).cpu()
         print("dxt_value cuda")
@@ -454,7 +454,7 @@ def eval_runtime():
 
     x_numpy = x.data.cpu().numpy()
     tt = time.time()
-    for i in range(runs): 
+    for i in range(runs):
        y = fftpack.dct(fftpack.dct(x_numpy[0].T, norm=None).T/N, norm=None)/N
     print("CPU: scipy.fftpack.dct2d takes %f ms" % ((time.time()-tt)/runs*1000))
 
@@ -462,7 +462,7 @@ def eval_runtime():
     torch.cuda.synchronize()
     tt = time.time()
     #with torch.autograd.profiler.profile(use_cuda=True) as prof:
-    for i in range(runs): 
+    for i in range(runs):
        y_2N = discrete_spectral_transform.dct2_2N(x[0], expk0=expk, expk1=expk)
     torch.cuda.synchronize()
     #print(prof)
@@ -472,7 +472,7 @@ def eval_runtime():
     torch.cuda.synchronize()
     tt = time.time()
     #with torch.autograd.profiler.profile(use_cuda=True) as prof:
-    for i in range(runs): 
+    for i in range(runs):
        y_N = discrete_spectral_transform.dct2_N(x[0], perm0=perm, expk0=expk, perm1=perm, expk1=expk)
     torch.cuda.synchronize()
     #print(prof)
@@ -482,8 +482,8 @@ def eval_runtime():
     torch.cuda.synchronize()
     tt = time.time()
     #with torch.autograd.profiler.profile(use_cuda=True) as prof:
-    for i in range(runs): 
-       y_N = dct2func.forward(x[0])
+    for i in range(runs):
+       y_2N = dct2func.forward(x[0])
     torch.cuda.synchronize()
     #print(prof)
     print("CUDA: DCT2d_2N Function takes %.5f ms" % ((time.time()-tt)/runs*1000))
@@ -492,7 +492,7 @@ def eval_runtime():
     torch.cuda.synchronize()
     tt = time.time()
     #with torch.autograd.profiler.profile(use_cuda=True) as prof:
-    for i in range(runs): 
+    for i in range(runs):
        y_N = dct2func.forward(x[0])
     torch.cuda.synchronize()
     #print(prof)
@@ -502,7 +502,7 @@ def eval_runtime():
     torch.cuda.synchronize()
     tt = time.time()
     #with torch.autograd.profiler.profile(use_cuda=True) as prof:
-    for i in range(runs): 
+    for i in range(runs):
        y_N = dct2func.forward(x[0])
     torch.cuda.synchronize()
     #print(prof)
@@ -512,7 +512,7 @@ def eval_runtime():
     torch.cuda.synchronize()
     tt = time.time()
     #with torch.autograd.profiler.profile(use_cuda=True) as prof:
-    for i in range(runs): 
+    for i in range(runs):
        y_N = discrete_spectral_transform.idct2_2N(x[0], expk0=expk, expk1=expk)
     torch.cuda.synchronize()
     #print(prof)
@@ -522,7 +522,7 @@ def eval_runtime():
     torch.cuda.synchronize()
     tt = time.time()
     #with torch.autograd.profiler.profile(use_cuda=True) as prof:
-    for i in range(runs): 
+    for i in range(runs):
         y_N = idct2func.forward(x[i%10])
     torch.cuda.synchronize()
     #print(prof)
@@ -532,7 +532,7 @@ def eval_runtime():
     torch.cuda.synchronize()
     tt = time.time()
     #with torch.autograd.profiler.profile(use_cuda=True) as prof:
-    for i in range(runs): 
+    for i in range(runs):
         y_N = idct2func.forward(x[i%10])
     torch.cuda.synchronize()
     #print(prof)
@@ -542,7 +542,7 @@ def eval_runtime():
     #torch.cuda.synchronize()
     #tt = time.time()
     ##with torch.autograd.profiler.profile(use_cuda=True) as prof:
-    #for i in range(runs): 
+    #for i in range(runs):
     #    y_N = discrete_spectral_transform.idxt(x[i%10], 0, expk=expk)
     #torch.cuda.synchronize()
     ##print(prof)
@@ -552,7 +552,7 @@ def eval_runtime():
     #torch.cuda.synchronize()
     #tt = time.time()
     ##with torch.autograd.profiler.profile(use_cuda=True) as prof:
-    #for i in range(runs): 
+    #for i in range(runs):
     #    y_N = idxct_func.forward(x[i%10])
     #torch.cuda.synchronize()
     ##print(prof)
@@ -561,7 +561,7 @@ def eval_runtime():
     torch.cuda.synchronize()
     tt = time.time()
     #with torch.autograd.profiler.profile(use_cuda=True) as prof:
-    for i in range(runs): 
+    for i in range(runs):
         y_N = torch.rfft(x[i%10].view([1, N, N]), signal_ndim=2, onesided=False)
     torch.cuda.synchronize()
     #print(prof)
@@ -570,7 +570,7 @@ def eval_runtime():
     torch.cuda.synchronize()
     tt = time.time()
     #with torch.autograd.profiler.profile(use_cuda=True) as prof:
-    for i in range(runs): 
+    for i in range(runs):
         y_N = discrete_spectral_transform.idcct2(x[i%10], expk_0=expk, expk_1=expk)
     torch.cuda.synchronize()
     #print(prof)
@@ -580,7 +580,7 @@ def eval_runtime():
     torch.cuda.synchronize()
     tt = time.time()
     #with torch.autograd.profiler.profile(use_cuda=True) as prof:
-    for i in range(runs): 
+    for i in range(runs):
         y_N = func.forward(x[i%10])
     torch.cuda.synchronize()
     #print(prof)
@@ -589,7 +589,7 @@ def eval_runtime():
     torch.cuda.synchronize()
     tt = time.time()
     #with torch.autograd.profiler.profile(use_cuda=True) as prof:
-    for i in range(runs): 
+    for i in range(runs):
         y_N = discrete_spectral_transform.idcst2(x[i%10], expk_0=expk, expk_1=expk)
     torch.cuda.synchronize()
     #print(prof)
@@ -599,7 +599,7 @@ def eval_runtime():
     torch.cuda.synchronize()
     tt = time.time()
     #with torch.autograd.profiler.profile(use_cuda=True) as prof:
-    for i in range(runs): 
+    for i in range(runs):
         y_N = func.forward(x[i%10])
     torch.cuda.synchronize()
     #print(prof)
@@ -608,7 +608,7 @@ def eval_runtime():
     torch.cuda.synchronize()
     tt = time.time()
     #with torch.autograd.profiler.profile(use_cuda=True) as prof:
-    for i in range(runs): 
+    for i in range(runs):
         y_N = discrete_spectral_transform.idsct2(x[i%10], expk_0=expk, expk_1=expk)
     torch.cuda.synchronize()
     #print(prof)
@@ -618,7 +618,7 @@ def eval_runtime():
     torch.cuda.synchronize()
     tt = time.time()
     #with torch.autograd.profiler.profile(use_cuda=True) as prof:
-    for i in range(runs): 
+    for i in range(runs):
         y_N = func.forward(x[i%10])
     torch.cuda.synchronize()
     #print(prof)
