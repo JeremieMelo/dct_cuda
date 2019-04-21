@@ -23,38 +23,39 @@ namespace cg = cooperative_groups;
 #define epsilon (1e-2)
 #define NUM_RUNS (10)
 
-#define checkCUDA(status) \
-{\
-	if (status != cudaSuccess) { \
-		printf("CUDA Runtime Error: %s\n", \
-			cudaGetErrorString(status)); \
-		assert(status == cudaSuccess); \
-	} \
-}
+#define checkCUDA(status)                       \
+    {                                           \
+        if (status != cudaSuccess)              \
+        {                                       \
+            printf("CUDA Runtime Error: %s\n",  \
+                   cudaGetErrorString(status)); \
+            assert(status == cudaSuccess);      \
+        }                                       \
+    }
 
 typedef std::chrono::high_resolution_clock::rep hr_clock_rep;
 
 inline hr_clock_rep get_globaltime(void)
 {
-	using namespace std::chrono;
-	return high_resolution_clock::now().time_since_epoch().count();
+    using namespace std::chrono;
+    return high_resolution_clock::now().time_since_epoch().count();
 }
 
 // Returns the period in miliseconds
 inline double get_timer_period(void)
 {
-	using namespace std::chrono;
-	return 1000.0 * high_resolution_clock::period::num / high_resolution_clock::period::den;
+    using namespace std::chrono;
+    return 1000.0 * high_resolution_clock::period::num / high_resolution_clock::period::den;
 }
 
 hr_clock_rep timer_start, timer_stop;
 
 template <typename T>
-inline __host__ __device__ void swap(T& x, T& y)
+inline __host__ __device__ void swap(T &x, T &y)
 {
-    T tmp = x; 
-    x = y; 
-    y = tmp; 
+    T tmp = x;
+    x = y;
+    y = tmp;
 }
 
 /// Return true if a number is power of 2
@@ -64,8 +65,8 @@ inline bool isPowerOf2(T val)
     return val && (val & (val - 1)) == 0;
 }
 
-// convert a linear index to a linear index in the transpose 
-struct transpose_index : public thrust::unary_function<size_t,size_t>
+// convert a linear index to a linear index in the transpose
+struct transpose_index : public thrust::unary_function<size_t, size_t>
 {
     size_t m, n;
 
@@ -73,7 +74,8 @@ struct transpose_index : public thrust::unary_function<size_t,size_t>
     transpose_index(size_t _m, size_t _n) : m(_m), n(_n) {}
 
     __host__ __device__
-    size_t operator()(size_t linear_index)
+        size_t
+        operator()(size_t linear_index)
     {
         size_t i = linear_index / n;
         size_t j = linear_index % n;
@@ -82,34 +84,32 @@ struct transpose_index : public thrust::unary_function<size_t,size_t>
     }
 };
 
-
 // transpose an M-by-N array
 template <typename T>
-void transpose(T* &src_ptr, T* &dst_ptr, size_t M, size_t N)
+void transpose(T *&src_ptr, T *&dst_ptr, size_t M, size_t N)
 {
     thrust::device_ptr<T> src_thrust_ptr(src_ptr);
     thrust::device_ptr<T> dst_thrust_ptr(dst_ptr);
-    
+
     thrust::device_vector<T> src(src_thrust_ptr, src_thrust_ptr + M * N);
     thrust::device_vector<T> dst(dst_thrust_ptr, dst_thrust_ptr + M * N);
-    
+
     thrust::counting_iterator<size_t> indices(0);
 
-    thrust::gather
-    (thrust::make_transform_iterator(indices, transpose_index(N, M)),
-    thrust::make_transform_iterator(indices, transpose_index(N, M)) + dst.size(),
-    src.begin(),dst.begin());
+    thrust::gather(thrust::make_transform_iterator(indices, transpose_index(N, M)),
+                   thrust::make_transform_iterator(indices, transpose_index(N, M)) + dst.size(),
+                   src.begin(), dst.begin());
     dst_ptr = thrust::raw_pointer_cast(dst.data());
 }
 
 template <typename T>
-__global__ void dct_1d_naive_kernel(const T* x_ptr, T* y_ptr, const int N)
+__global__ void dct_1d_naive_kernel(const T *x_ptr, T *y_ptr, const int N)
 {
     const int tid = blockIdx.x * blockDim.x + threadIdx.x;
     const int rid = blockIdx.y;
-    const T* x = x_ptr + N * rid;
-    T* y = y_ptr + N * rid;
-    if(tid < N)
+    const T *x = x_ptr + N * rid;
+    T *y = y_ptr + N * rid;
+    if (tid < N)
     {
         for (int i = 0; i < N; i++)
         {
@@ -120,48 +120,83 @@ __global__ void dct_1d_naive_kernel(const T* x_ptr, T* y_ptr, const int N)
 }
 
 template <typename T>
-__global__ __launch_bounds__(1024,2) void dct_2d_kernel_1(T* x, T* y, const int M, const int N)
+__global__ __launch_bounds__(1024, 2) void dct_2d_kernel_1(T *x, T *y, const int M, const int N)
 {
     const int xtid = blockIdx.x * blockDim.x + threadIdx.x;
     const int ytid = blockIdx.y * blockDim.y + threadIdx.y;
 
-    if(xtid < N && ytid < M)
+    if (xtid < N && ytid < M)
     {
-        for (int j = 0; j < N; ++j) {
+        for (int j = 0; j < N; ++j)
+        {
             y[ytid * N + xtid] += x[ytid * N + j] * cos(PI * (j + 0.5) / N * xtid);
-        }    
-    }
-}
-
-template <typename T>
-__global__ __launch_bounds__(1024,2) void dct_2d_kernel_2(T* x, T* y, const int M, const int N)
-{
-    const int xtid = blockIdx.x * blockDim.x + threadIdx.x;
-    const int ytid = blockIdx.y * blockDim.y + threadIdx.y;
-
-    if(xtid < N && ytid < M)
-    {
-        x[ytid * N + xtid] = 0;
-        for (int j = 0; j < M; ++j) {
-            x[ytid * N + xtid] += y[j * N + xtid] * cos(PI * (j + 0.5) / M * ytid);
         }
-        x[ytid * N + xtid] = x[ytid * N + xtid] / (M * N) * 4;
     }
-    
 }
 
 template <typename T>
-__global__ void dct_2d_naive_kernel(const T* x, T* y, const int M, const int N)
+__global__ __launch_bounds__(1024, 2) void dct_2d_kernel_2(T *x, T *y, const int M, const int N)
 {
     const int xtid = blockIdx.x * blockDim.x + threadIdx.x;
     const int ytid = blockIdx.y * blockDim.y + threadIdx.y;
 
-    if(xtid < N && ytid < M)
+    if (xtid < N && ytid < M)
     {
-        for (int i = 0; i < M; ++i) {
+        T tmp = 0;
+        for (int j = 0; j < M; ++j)
+        {
+            tmp += y[j * N + xtid] * cos(PI * (j + 0.5) / M * ytid);
+        }
+        x[ytid * N + xtid] = tmp / (M * N) * 4;
+    }
+}
+
+template <typename T>
+__global__ __launch_bounds__(1024, 2) void dct_2d_kernel_transpose_1(T *x, T *y, const int M, const int N)
+{
+    const int xtid = blockIdx.x * blockDim.x + threadIdx.x;
+    const int ytid = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (xtid < N && ytid < M)
+    {
+        for (int j = 0; j < N; ++j)
+        {
+            y[xtid * N + ytid] += x[ytid * N + j] * cos(PI * (j + 0.5) / N * xtid);
+        }
+    }
+}
+
+template <typename T>
+__global__ __launch_bounds__(1024, 2) void dct_2d_kernel_transpose_2(T *x, T *y, const int M, const int N)
+{
+    const int xtid = blockIdx.x * blockDim.x + threadIdx.x;
+    const int ytid = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (xtid < M && ytid < N)
+    {
+        T tmp = 0;
+        for (int j = 0; j < M; ++j)
+        {
+            tmp += y[ytid * M + j] * cos(PI * (j + 0.5) / M * xtid);
+        }
+        x[xtid * M + ytid] = tmp / (M * N) * 4;
+    }
+}
+
+template <typename T>
+__global__ void dct_2d_naive_kernel(const T *x, T *y, const int M, const int N)
+{
+    const int xtid = blockIdx.x * blockDim.x + threadIdx.x;
+    const int ytid = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (xtid < N && ytid < M)
+    {
+        for (int i = 0; i < M; ++i)
+        {
             T tmp = 0;
             // #pragma unroll 8
-            for (int j = 0; j < N; ++j) {
+            for (int j = 0; j < N; ++j)
+            {
                 tmp += x[i * N + j] * cos(PI * (j + 0.5) / N * xtid);
             }
             y[ytid * N + xtid] += tmp * cos(PI * (i + 0.5) / M * ytid);
@@ -172,11 +207,10 @@ __global__ void dct_2d_naive_kernel(const T* x, T* y, const int M, const int N)
 
 template <typename T>
 void dct_2d_naive(
-        const T *h_x,
-        T *h_y,
-        int M,
-        int N
-        )
+    const T *h_x,
+    T *h_y,
+    int M,
+    int N)
 {
     T *d_x;
     T *d_y;
@@ -187,43 +221,37 @@ void dct_2d_naive(
     cudaMemset(d_y, 0, size);
     cudaMemcpy(d_x, h_x, size, cudaMemcpyHostToDevice);
 
-    #if 1
     dim3 gridSize((N + TPB - 1) / TPB, (M + TPB - 1) / TPB, 1);
     dim3 blockSize(TPB, TPB, 1);
-    // dct_2d_naive_kernel<<<gridSize, blockSize>>>(d_x, d_y, M, N);
+    dim3 gridSize1((N + TPB - 1) / TPB, (M + TPB - 1) / TPB, 1);
+    dim3 gridSize2((M + TPB - 1) / TPB, (N + TPB - 1) / TPB, 1);
+    timer_start = get_globaltime();
+
+    #if 1
+    dct_2d_kernel_transpose_1<<<gridSize1, blockSize>>>(d_x, d_y, M, N);
+    dct_2d_kernel_transpose_2<<<gridSize2, blockSize>>>(d_x, d_y, M, N);
+    #elif 1
     dct_2d_kernel_1<<<gridSize, blockSize>>>(d_x, d_y, M, N);
     dct_2d_kernel_2<<<gridSize, blockSize>>>(d_x, d_y, M, N);
-    // void **args = new void* [4];
-    // args[0] = d_x;
-    // args[1] = d_y;
-    // args[2] = &M;
-    // args[3] = &N;
-    // cudaLaunchCooperativeKernel((const void *)dct_2d_naive_kernel<T>, gridSize, blockSize, args);
+    #elif 1
+    dct_2d_naive_kernel<<<gridSize, blockSize>>>(d_x, d_y, M, N);
     #endif
-    #if 0
-    dim3 gridSize1((N + TPB - 1) / TPB, M, 1);
-    dim3 gridSize2((M + TPB - 1) / TPB, N, 1);
-    dim3 blockSize(TPB, 1, 1);
-    //dct_1d_naive_kernel<T><<<gridSize1, blockSize>>>(d_x, d_y, N);
-    transpose<T>(d_x, d_y, M, N);
+
     cudaDeviceSynchronize();
-    
-    //dct_1d_naive_kernel<T><<<gridSize2, blockSize>>>(d_x, d_y, M);
-    #endif
-    cudaDeviceSynchronize();
-    
+    timer_stop = get_globaltime();
+
     cudaMemcpy(h_y, d_x, size, cudaMemcpyDeviceToHost);
     cudaFree(d_x);
     cudaFree(d_y);
 }
 
 template <typename T>
-int validate(T* result_cuda, T* result_gt, const int N)
+int validate(T *result_cuda, T *result_gt, const int N)
 {
-    for(int i = 0; i < N; ++i)
+    for (int i = 0; i < N; ++i)
     {
         int flag = (std::abs(result_cuda[i] - result_gt[i]) / std::abs(result_gt[i])) < epsilon;
-        if(flag == 0)
+        if (flag == 0)
         {
             printf("%d:, cuda_res: %f, gt_res: %f\n", i, result_cuda[i], result_gt[i]);
             // return 0;
@@ -233,14 +261,14 @@ int validate(T* result_cuda, T* result_gt, const int N)
 }
 
 template <typename T>
-int validate2D(T* result_cuda, T* result_gt, const int M, const int N)
+int validate2D(T *result_cuda, T *result_gt, const int M, const int N)
 {
-    for(int i = 0; i < M; ++i)
+    for (int i = 0; i < M; ++i)
     {
-        for(int j = 0; j < N; ++j)
+        for (int j = 0; j < N; ++j)
         {
-            int flag = (std::abs(result_cuda[i*N+j] - result_gt[i*N+j]) / std::abs(result_gt[i*N+j])) < epsilon;
-            if(flag == 0)
+            int flag = (std::abs(result_cuda[i * N + j] - result_gt[i * N + j]) / std::abs(result_gt[i * N + j])) < epsilon;
+            if (flag == 0)
             {
                 // printf("cuda_res[%d][%d]: %f, gt_res[%d][%d]: %f\n", i, j, result_cuda[i*N+j], i, j, result_gt[i*N+j]);
                 return 0;
@@ -251,10 +279,11 @@ int validate2D(T* result_cuda, T* result_gt, const int M, const int N)
 }
 
 template <typename T>
-T** allocateMatrix(int M, int N){
-    T** data;
-    data = new T* [M];
-    for(int i = 0; i < M; i++)
+T **allocateMatrix(int M, int N)
+{
+    T **data;
+    data = new T *[M];
+    for (int i = 0; i < M; i++)
     {
         data[i] = new T[N];
     }
@@ -262,16 +291,17 @@ T** allocateMatrix(int M, int N){
 }
 
 template <typename T>
-void destroyMatrix(T** &data, int M)
+void destroyMatrix(T **&data, int M)
 {
-    for(int i = 0;i < M; i++){
+    for (int i = 0; i < M; i++)
+    {
         delete[] data[i];
     }
-    delete [] data;
+    delete[] data;
 }
 
 template <typename T>
-void load_data(T* &data, T* &result, int &M, int &N)
+void load_data(T *&data, T *&result, int &M, int &N)
 {
     std::ifstream input_file("test_2d.dat", std::ios_base::in);
 
@@ -283,8 +313,8 @@ void load_data(T* &data, T* &result, int &M, int &N)
     input_file >> N;
     printf("M: %d\n", M);
     printf("N: %d\n", N);
-    data = new T [M * N];
-    while(input_file >> val)
+    data = new T[M * N];
+    while (input_file >> val)
     {
         data[i] = val;
         i++;
@@ -295,8 +325,8 @@ void load_data(T* &data, T* &result, int &M, int &N)
     i = 0;
     input_file2 >> M;
     input_file2 >> N;
-    result = new T [M * N];
-    while(input_file2 >> val)
+    result = new T[M * N];
+    while (input_file2 >> val)
     {
         result[i] = val;
         i++;
@@ -313,38 +343,31 @@ int main()
 
     int M, N;
     load_data<dtype>(h_x, h_gt, M, N);
-    h_y = new dtype [M * N];
+    h_y = new dtype[M * N];
 
-
-    for(int i = 0;i<10;++i)
+    for (int i = 0; i < 10; ++i)
     {
         printf("%d: %f\n", i, h_x[i]);
     }
     double total_time = 0;
-    for(int i = 0; i < NUM_RUNS; ++i)
+    for (int i = 0; i < NUM_RUNS; ++i)
     {
-        timer_start = get_globaltime();
         dct_2d_naive<dtype>(h_x, h_y, M, N);
-        timer_stop = get_globaltime();
         int flag = validate2D<dtype>(h_y, h_gt, M, N);
         printf("[I] validation: %d\n", flag);
-        printf("[D] dct 2D takes %g ms\n", (timer_stop-timer_start)*get_timer_period());
-        total_time +=  i > 0 ? (timer_stop-timer_start)*get_timer_period() : 0;
+        printf("[D] dct 2D takes %g ms\n", (timer_stop - timer_start) * get_timer_period());
+        total_time += i > 0 ? (timer_stop - timer_start) * get_timer_period() : 0;
     }
+    printf("[D] dct 2D (%d * %d) takes average %g ms\n", M, N, total_time / (NUM_RUNS - 1));
 
-    // int flag = validate<dtype>(h_y, h_gt, N);
-    // printf("[D] dct 1D takes %g ms\n", (timer_stop-timer_start)*get_timer_period());
-    printf("[D] dct 2D (%d * %d) takes average %g ms\n", M, N, total_time/(NUM_RUNS-1));
-    // printf("[I] validation: %d\n", flag);
-
-    for(int i = 0; i<10; ++i)
+    for (int i = 0; i < 10; ++i)
     {
         printf("%d: %f\n", i, h_y[i]);
     }
 
-    delete [] h_x;
-    delete [] h_y;
-    delete [] h_gt;
+    delete[] h_x;
+    delete[] h_y;
+    delete[] h_gt;
 
     return 0;
 }
