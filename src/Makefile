@@ -2,7 +2,7 @@ ARCH=\
   -gencode arch=compute_60,code=compute_60 \
   -gencode arch=compute_60,code=sm_60
 
-OPTIONS=-O3  -rdc=true -use_fast_math -lcurand  -Xcompiler -Wall -lineinfo -Xcompiler -fopenmp --default-stream per-thread #-maxrregcount 37
+OPTIONS=-O3  -rdc=true -use_fast_math -lcurand  -Xcompiler -Wall -lineinfo -Xcompiler -fopenmp --default-stream per-thread  -lcublas #-maxrregcount 37
 
 all: dct_cuda dct_cuda_lee dct2d_cuda dct2d_cuda_lee
 

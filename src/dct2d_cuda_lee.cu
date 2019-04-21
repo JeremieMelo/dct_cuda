@@ -7,6 +7,7 @@
 #include <string>
 #include <fstream>
 #include <assert.h>
+#include <cublas_v2.h>
 
 #define PI (3.141592653589793238462643383279502884197169399375105820974944592307816406286208998628034825342117067982148086513282306647093844609550582231725359408128481)
 #define TPB (1024)
@@ -72,6 +73,32 @@ inline __device__ __host__ int LogBase2(uint64_t n)
     return table[(n * 0x03f6eaf2cd271461) >> 58];
 }
 
+/**********************/
+/* cuBLAS ERROR CHECK */
+/**********************/
+#ifndef cublasSafeCall
+#define cublasSafeCall(err)     __cublasSafeCall(err, __FILE__, __LINE__)
+#endif
+
+inline void __cublasSafeCall(cublasStatus_t err, const char *file, const int line)
+{
+    if( CUBLAS_STATUS_SUCCESS != err) {
+        fprintf(stderr, "CUBLAS error in file '%s', line %d\n \nerror %d \nterminating!\n",__FILE__, __LINE__,err); 
+        getchar(); cudaDeviceReset(); assert(0); 
+    }
+}
+
+template <typename T>
+inline void transpose(T* & src_ptr, T* & dst, const int M, const int N)
+{
+    T alpha = 1.;
+    T beta  = 0.;
+    const double* src = (const double*) src_ptr;
+    cublasHandle_t handle;
+    cublasSafeCall(cublasCreate(&handle));
+    cublasSafeCall(cublasDgeam(handle, CUBLAS_OP_T, CUBLAS_OP_T, M, N, &alpha, src, N, &beta, src, N, dst, M)); 
+    cublasDestroy(handle);
+}
 /// Precompute cosine values needed for N-point dct
 /// @param  cos  size N - 1 buffer on GPU, contains the result after function call
 /// @param  N    the length of target dct, must be power of 2
@@ -178,46 +205,67 @@ void precompute_dct_cos(TValue *cos, int N)
 }
 
 template <typename TValue, typename TIndex>
-__global__ void computeDctForward_1(const TValue *curr_ptr, TValue *next_ptr, const TValue *cos, TIndex N, TIndex len, TIndex halfLen, TIndex cosOffset)
+__global__ void computeDctForward_1(const TValue * __restrict__ curr_ptr, TValue *next_ptr, const TValue *cos, TIndex N, TIndex len, TIndex halfLen, TIndex cosOffset)
 {
     TIndex halfN = (N >> 1);
-    TIndex stride = blockDim.x * gridDim.x;
+    // TIndex stride = blockDim.x * gridDim.x;
     TIndex row_id = blockIdx.y;
-    const TValue * curr = curr_ptr + row_id * N;
+    const TValue * __restrict__ curr = curr_ptr + row_id * N;
     TValue *next = next_ptr + row_id * N;
-    for (TIndex thread_id = blockIdx.x * blockDim.x + threadIdx.x; thread_id < halfN; thread_id += stride)
+    // for (TIndex thread_id = blockIdx.x * blockDim.x + threadIdx.x; thread_id < halfN; thread_id += stride)
+    // {
+    //     TIndex rest = thread_id & (halfN - 1);
+    //     TIndex i = rest & (halfLen - 1);
+    //     TIndex offset = (thread_id - i) * 2;
+
+    //     next[offset + i] = curr[offset + i] + curr[offset + len - i - 1];
+    //     // next[offset + i + halfLen] = (curr[offset + i] - curr[offset + len - i - 1]) * cos[cosOffset + i];
+    // }
+    TIndex thread_id = blockIdx.x * blockDim.x + threadIdx.x; 
+    if(thread_id < halfN)
     {
         TIndex rest = thread_id & (halfN - 1);
         TIndex i = rest & (halfLen - 1);
         TIndex offset = (thread_id - i) * 2;
 
         next[offset + i] = curr[offset + i] + curr[offset + len - i - 1];
-        // next[offset + i + halfLen] = (curr[offset + i] - curr[offset + len - i - 1]) * cos[cosOffset + i];
-    }
-    // for (TIndex thread_id = halfMN_by_gridDim*blockIdx.x + threadIdx.x; thread_id < halfMN_by_gridDim*(blockIdx.x+1); thread_id += blockDim.x)
-    for (TIndex thread_id = blockIdx.x * blockDim.x + threadIdx.x; thread_id < halfN; thread_id += stride)
-    {
-        TIndex rest = thread_id & (halfN - 1);
-        TIndex i = rest & (halfLen - 1);
-        TIndex offset = (thread_id - i) * 2;
-
-        //next[offset + i] = curr[offset + i] + curr[offset + len - i - 1];
         next[offset + i + halfLen] = (curr[offset + i] - curr[offset + len - i - 1]) * cos[cosOffset + i];
     }
+    // for (TIndex thread_id = halfMN_by_gridDim*blockIdx.x + threadIdx.x; thread_id < halfMN_by_gridDim*(blockIdx.x+1); thread_id += blockDim.x)
+    // for (TIndex thread_id = blockIdx.x * blockDim.x + threadIdx.x; thread_id < halfN; thread_id += stride)
+    // {
+    //     TIndex rest = thread_id & (halfN - 1);
+    //     TIndex i = rest & (halfLen - 1);
+    //     TIndex offset = (thread_id - i) * 2;
+
+    //     //next[offset + i] = curr[offset + i] + curr[offset + len - i - 1];
+    //     next[offset + i + halfLen] = (curr[offset + i] - curr[offset + len - i - 1]) * cos[cosOffset + i];
+    // }
+
 }
 
 template <typename TValue, typename TIndex>
-__global__ void computeDctBackward_1(const TValue *curr_ptr, TValue *next_ptr, TIndex N, TIndex len, TIndex halfLen)
+__global__ void computeDctBackward_1(const TValue * __restrict__ curr_ptr, TValue *next_ptr, TIndex N, TIndex len, TIndex halfLen)
 {
     
     TIndex halfN = (N >> 1);
     TIndex row_id = blockIdx.y;
-    const TValue * curr = curr_ptr + row_id * N;
+    const TValue *  __restrict__ curr = curr_ptr + row_id * N;
     TValue *next = next_ptr + row_id * N;
     // TIndex halfMN = M * halfN;
     //TIndex halfMN_by_gridDim = halfMN/gridDim.x;
     //for (TIndex thread_id = halfMN_by_gridDim*blockIdx.x + threadIdx.x; thread_id < halfMN_by_gridDim*(blockIdx.x+1); thread_id += blockDim.x)
-    for (TIndex thread_id = blockIdx.x * blockDim.x + threadIdx.x; thread_id < halfN; thread_id += blockDim.x * gridDim.x)
+    // for (TIndex thread_id = blockIdx.x * blockDim.x + threadIdx.x; thread_id < halfN; thread_id += blockDim.x * gridDim.x)
+    // {
+    //     TIndex rest = thread_id & (halfN - 1);
+    //     TIndex i = rest & (halfLen - 1);
+    //     TIndex offset = (thread_id - i) * 2;
+
+    //     next[offset + i * 2] = curr[offset + i];
+    //     next[offset + i * 2 + 1] = (i + 1 == halfLen) ? curr[offset + len - 1] : curr[offset + halfLen + i] + curr[offset + halfLen + i + 1];
+    // }
+    TIndex thread_id = blockIdx.x * blockDim.x + threadIdx.x;
+    if(thread_id < halfN)
     {
         TIndex rest = thread_id & (halfN - 1);
         TIndex i = rest & (halfLen - 1);
@@ -231,35 +279,36 @@ __global__ void computeDctBackward_1(const TValue *curr_ptr, TValue *next_ptr, T
 #define ROW2COL(IDX, COL, N) ((IDX) * (N) + (COL))
 
 template <typename TValue, typename TIndex>
-__global__ void computeDctForward_2(const TValue *curr, TValue *next, const TValue *cos, TIndex M, TIndex N, TIndex len, TIndex halfLen, TIndex cosOffset)
+__global__ void computeDctForward_2(const TValue * __restrict__ curr, TValue *next, const TValue *cos, TIndex M, TIndex N, TIndex len, TIndex halfLen, TIndex cosOffset)
 {
     TIndex halfM = (M >> 1);
-    TIndex stride = blockDim.x * gridDim.x;
     TIndex col = blockIdx.y;
     
-    for (TIndex thread_id = blockIdx.x * blockDim.x + threadIdx.x; thread_id < halfM; thread_id += stride)
+    TIndex thread_id = blockIdx.x * blockDim.x + threadIdx.x; 
+    if(thread_id < halfM)
     {
         TIndex rest = thread_id & (halfM - 1);
         TIndex i = rest & (halfLen - 1);
         TIndex offset = (thread_id - i) * 2;
 
         next[ROW2COL(offset + i, col, N)] = curr[ROW2COL(offset + i, col, N)] + curr[ROW2COL(offset + len - i - 1, col, N)];
+        next[ROW2COL(offset + i + halfLen, col, N)] = (curr[ROW2COL(offset + i, col, N)] - curr[ROW2COL(offset + len - i - 1, col, N)]) * cos[cosOffset + i];
         // next[offset + i + halfLen] = (curr[offset + i] - curr[offset + len - i - 1]) * cos[cosOffset + i];
     }
     // for (TIndex thread_id = halfMN_by_gridDim*blockIdx.x + threadIdx.x; thread_id < halfMN_by_gridDim*(blockIdx.x+1); thread_id += blockDim.x)
-    for (TIndex thread_id = blockIdx.x * blockDim.x + threadIdx.x; thread_id < halfM; thread_id += stride)
-    {
-        TIndex rest = thread_id & (halfM - 1);
-        TIndex i = rest & (halfLen - 1);
-        TIndex offset = (thread_id - i) * 2;
+    // for (TIndex thread_id = blockIdx.x * blockDim.x + threadIdx.x; thread_id < halfM; thread_id += stride)
+    // {
+    //     TIndex rest = thread_id & (halfM - 1);
+    //     TIndex i = rest & (halfLen - 1);
+    //     TIndex offset = (thread_id - i) * 2;
 
-        //next[offset + i] = curr[offset + i] + curr[offset + len - i - 1];
-        next[ROW2COL(offset + i + halfLen, col, N)] = (curr[ROW2COL(offset + i, col, N)] - curr[ROW2COL(offset + len - i - 1, col, N)]) * cos[cosOffset + i];
-    }
+    //     //next[offset + i] = curr[offset + i] + curr[offset + len - i - 1];
+    //     next[ROW2COL(offset + i + halfLen, col, N)] = (curr[ROW2COL(offset + i, col, N)] - curr[ROW2COL(offset + len - i - 1, col, N)]) * cos[cosOffset + i];
+    // }
 }
 
 template <typename TValue, typename TIndex>
-__global__ void computeDctBackward_2(const TValue *curr, TValue *next, TIndex M, TIndex N, TIndex len, TIndex halfLen)
+__global__ void computeDctBackward_2(const TValue * __restrict__ curr, TValue *next, TIndex M, TIndex N, TIndex len, TIndex halfLen)
 {
     
     TIndex halfM = (M >> 1);
@@ -268,7 +317,17 @@ __global__ void computeDctBackward_2(const TValue *curr, TValue *next, TIndex M,
     // TIndex halfMN = M * halfN;
     //TIndex halfMN_by_gridDim = halfMN/gridDim.x;
     //for (TIndex thread_id = halfMN_by_gridDim*blockIdx.x + threadIdx.x; thread_id < halfMN_by_gridDim*(blockIdx.x+1); thread_id += blockDim.x)
-    for (TIndex thread_id = blockIdx.x * blockDim.x + threadIdx.x; thread_id < halfM; thread_id += blockDim.x * gridDim.x)
+    // for (TIndex thread_id = blockIdx.x * blockDim.x + threadIdx.x; thread_id < halfM; thread_id += blockDim.x * gridDim.x)
+    // {
+    //     TIndex rest = thread_id & (halfM - 1);
+    //     TIndex i = rest & (halfLen - 1);
+    //     TIndex offset = (thread_id - i) * 2;
+
+    //     next[ROW2COL(offset + i * 2, col, N)] = curr[ROW2COL(offset + i, col, N)];
+    //     next[ROW2COL(offset + i * 2 + 1, col, N)] = (i + 1 == halfLen) ? curr[ROW2COL(offset + len - 1, col, N)] : curr[ROW2COL(offset + halfLen + i, col, N)] + curr[ROW2COL(offset + halfLen + i + 1, col, N)];
+    // }
+    TIndex thread_id = blockIdx.x * blockDim.x + threadIdx.x;
+    if(thread_id < halfM)
     {
         TIndex rest = thread_id & (halfM - 1);
         TIndex i = rest & (halfLen - 1);
@@ -280,7 +339,7 @@ __global__ void computeDctBackward_2(const TValue *curr, TValue *next, TIndex M,
 }
 
 template <typename T>
-__global__ void normalize(T* x, const T* y, const int M, const int N){
+__global__ void normalize(T* x, const T* __restrict__ y, const int M, const int N){
     int tid = blockDim.x * blockIdx.x + threadIdx.x;
     if (tid < M * N) {
         x[tid] = y[tid] / (M * N) * 4;
@@ -439,8 +498,6 @@ void dct_2d_lee(
     size_t size = M * N * sizeof(T);
 
     cudaMalloc((void **)&d_x, size);
-    cudaMalloc((void **)&d_y, size);
-    cudaMalloc((void **)&scratch, size);
     cudaMalloc((void **)&d_cos0, N * sizeof(T)); // row
     cudaMalloc((void **)&d_cos1, M * sizeof(T)); // column
 
@@ -455,11 +512,26 @@ void dct_2d_lee(
     precompute_dct_cos_kernel<T><<<(M + TPB - 1) / TPB, TPB, 0, streams[1]>>>(d_cos1, M, (int)log2(M));
     cudaDeviceSynchronize();
 
+    timer_start = get_globaltime();
+
+    cudaMalloc((void **)&d_y, size);
+    cudaMalloc((void **)&scratch, size);
+    #if 1
     dct_ref_1<T>(d_x, d_y, scratch, d_cos0, M, N);
-
-
+    transpose<T>(d_y, d_x, M, N);
+    dct_ref_1<T>(d_x, d_y, scratch, d_cos1, N, M);
+    transpose<T>(d_y, d_x, N, M);
+    normalize<T><<<(N * M + TPB - 1) / TPB, TPB>>>(d_x, d_x, M, N);
+    #endif
+    #if 0
+    dct_ref_1<T>(d_x, d_y, scratch, d_cos0, M, N);
     dct_ref_2<T>(d_y, d_x, scratch, d_cos1, M, N);
-    
+    #endif
+    cudaDeviceSynchronize();
+
+    cudaFree(scratch);
+
+    timer_stop = get_globaltime();
     
     cudaMemcpy(h_y, d_x, size, cudaMemcpyDeviceToHost);
     
@@ -575,9 +647,9 @@ int main()
     double total_time = 0;
     for(int i = 0; i < NUM_RUNS; ++i)
     {
-        timer_start = get_globaltime();
+        
         dct_2d_lee<dtype>(h_x, h_y, M, N);
-        timer_stop = get_globaltime();
+        
         int flag = validate2D<dtype>(h_y, h_gt, M, N);
         printf("[I] validation: %d\n", flag);
         printf("[D] dct 2D takes %g ms\n", (timer_stop-timer_start)*get_timer_period());

@@ -3,7 +3,7 @@
 '''
 @Author: Jake Gu
 @Date: 2019-04-13 19:59:17
-@LastEditTime: 2019-04-15 17:23:04
+@LastEditTime: 2019-04-20 17:35:08
 '''
 ##
 # @file   dct_unitest.py
@@ -446,7 +446,7 @@ def eval_runtime():
 
     N = 4096
     runs = 100
-    x = torch.empty(10, N, N, dtype=torch.  ).uniform_(0, 10.0).cuda()
+    x = torch.empty(10, N, N, dtype=torch.float64).uniform_(0, 10.0).cuda()
     perm = discrete_spectral_transform.get_perm(N, dtype=torch.int64, device=x.device)
     expk = discrete_spectral_transform.get_expk(N, dtype=x.dtype, device=x.device)
 
@@ -506,7 +506,7 @@ def eval_runtime():
        y_N = dct2func.forward(x[0])
     torch.cuda.synchronize()
     #print(prof)
-    print("CUDA: DCT2dFunction lee takes %.5f ms" % ((time.time()-tt)/runs*1000))
+    print("CUDA: DCT2d_Lee Function takes %.5f ms" % ((time.time()-tt)/runs*1000))
     exit()
 
     torch.cuda.synchronize()
