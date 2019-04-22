@@ -214,38 +214,17 @@ __global__ void computeDctForward_1(const TValue *__restrict__ curr_ptr, TValue 
 {
     TIndex halfN = (N >> 1);
     TIndex thread_id = blockIdx.x * blockDim.x + threadIdx.x;
-    // TIndex stride = blockDim.x * gridDim.x;
-    // for (TIndex thread_id = blockIdx.x * blockDim.x + threadIdx.x; thread_id < halfN; thread_id += stride)
-    // {
-    //     TIndex rest = thread_id & (halfN - 1);
-    //     TIndex i = rest & (halfLen - 1);
-    //     TIndex offset = (thread_id - i) * 2;
-
-    //     next[offset + i] = curr[offset + i] + curr[offset + len - i - 1];
-    //     // next[offset + i + halfLen] = (curr[offset + i] - curr[offset + len - i - 1]) * cos[cosOffset + i];
-    // }
     if (thread_id < halfN)
     {
-        TIndex row_id = blockIdx.y;
-        const TValue *__restrict__ curr = curr_ptr + row_id * N;
         TIndex rest = thread_id & (halfN - 1);
         TIndex i = rest & (halfLen - 1);
-        TIndex offset = (thread_id - i) * 2;
-        TValue *next = next_ptr + row_id * N + offset + i;
+        TIndex offset = (thread_id - i) * 2 + blockIdx.y * N;
+        TValue *next = next_ptr + offset + i;
+        const TValue *__restrict__ curr = curr_ptr + offset;
 
-        next[0] = curr[offset + i] + curr[offset + len - i - 1];
-        next[halfLen] = (curr[offset + i] - curr[offset + len - i - 1]) * cos[cosOffset + i];
+        next[0] = curr[i] + curr[len - i - 1];
+        next[halfLen] = (curr[i] - curr[len - i - 1]) * cos[cosOffset + i];
     }
-    // for (TIndex thread_id = halfMN_by_gridDim*blockIdx.x + threadIdx.x; thread_id < halfMN_by_gridDim*(blockIdx.x+1); thread_id += blockDim.x)
-    // for (TIndex thread_id = blockIdx.x * blockDim.x + threadIdx.x; thread_id < halfN; thread_id += stride)
-    // {
-    //     TIndex rest = thread_id & (halfN - 1);
-    //     TIndex i = rest & (halfLen - 1);
-    //     TIndex offset = (thread_id - i) * 2;
-
-    //     //next[offset + i] = curr[offset + i] + curr[offset + len - i - 1];
-    //     next[offset + i + halfLen] = (curr[offset + i] - curr[offset + len - i - 1]) * cos[cosOffset + i];
-    // }
 }
 
 template <typename TValue, typename TIndex>
@@ -253,29 +232,16 @@ __global__ void computeDctBackward_1(const TValue *__restrict__ curr_ptr, TValue
 {
     TIndex halfN = (N >> 1);
     TIndex thread_id = blockIdx.x * blockDim.x + threadIdx.x;
-    // TIndex halfMN = M * halfN;
-    // TIndex halfMN_by_gridDim = halfMN/gridDim.x;
-    // for (TIndex thread_id = halfMN_by_gridDim*blockIdx.x + threadIdx.x; thread_id < halfMN_by_gridDim*(blockIdx.x+1); thread_id += blockDim.x)
-    // for (TIndex thread_id = blockIdx.x * blockDim.x + threadIdx.x; thread_id < halfN; thread_id += blockDim.x * gridDim.x)
-    // {
-    //     TIndex rest = thread_id & (halfN - 1);
-    //     TIndex i = rest & (halfLen - 1);
-    //     TIndex offset = (thread_id - i) * 2;
-
-    //     next[offset + i * 2] = curr[offset + i];
-    //     next[offset + i * 2 + 1] = (i + 1 == halfLen) ? curr[offset + len - 1] : curr[offset + halfLen + i] + curr[offset + halfLen + i + 1];
-    // }
     if (thread_id < halfN)
     {
-        TIndex row_id = blockIdx.y;
-        const TValue *__restrict__ curr = curr_ptr + row_id * N;
         TIndex rest = thread_id & (halfN - 1);
         TIndex i = rest & (halfLen - 1);
-        TIndex offset = (thread_id - i) * 2;
-        TValue *next = next_ptr + row_id * N + offset + i * 2;
+        TIndex offset = (thread_id - i) * 2 + blockIdx.y * N;
+        TValue *next = next_ptr + offset + i * 2;
+        const TValue *__restrict__ curr = curr_ptr + offset;
 
-        next[0] = curr[offset + i];
-        next[1] = (i + 1 == halfLen) ? curr[offset + len - 1] : curr[offset + halfLen + i] + curr[offset + halfLen + i + 1];
+        next[0] = curr[i];
+        next[1] = (i + 1 == halfLen) ? curr[len - 1] : curr[halfLen + i] + curr[halfLen + i + 1];
     }
 }
 
@@ -286,14 +252,14 @@ __global__ void computeDctBackward_lasttime_1(const TValue *__restrict__ curr_pt
     TIndex thread_id = blockIdx.x * blockDim.x + threadIdx.x;
     if (thread_id < halfN)
     {
-        const TValue *__restrict__ curr = curr_ptr + blockIdx.y * N;
         TIndex rest = thread_id & (halfN - 1);
         TIndex i = rest & (halfLen - 1);
         TIndex offset = (thread_id - i) * 2;
         TValue *next = next_ptr + blockIdx.y + (offset + i * 2) * M;
+        const TValue *__restrict__ curr = curr_ptr + offset + blockIdx.y * N;
 
-        next[0] = curr[offset + i];
-        next[M] = (i + 1 == halfLen) ? curr[offset + len - 1] : curr[offset + halfLen + i] + curr[offset + halfLen + i + 1];
+        next[0] = curr[i];
+        next[M] = (i + 1 == halfLen) ? curr[len - 1] : curr[halfLen + i] + curr[halfLen + i + 1];
     }
 }
 
@@ -314,16 +280,6 @@ __global__ void computeDctForward_2(const TValue *__restrict__ curr, TValue *nex
         next[ROW2COL(offset + i, col, N)] = curr[ROW2COL(offset + i, col, N)] + curr[ROW2COL(offset + len - i - 1, col, N)];
         next[ROW2COL(offset + i + halfLen, col, N)] = (curr[ROW2COL(offset + i, col, N)] - curr[ROW2COL(offset + len - i - 1, col, N)]) * cos[cosOffset + i];
     }
-    // for (TIndex thread_id = halfMN_by_gridDim*blockIdx.x + threadIdx.x; thread_id < halfMN_by_gridDim*(blockIdx.x+1); thread_id += blockDim.x)
-    // for (TIndex thread_id = blockIdx.x * blockDim.x + threadIdx.x; thread_id < halfM; thread_id += stride)
-    // {
-    //     TIndex rest = thread_id & (halfM - 1);
-    //     TIndex i = rest & (halfLen - 1);
-    //     TIndex offset = (thread_id - i) * 2;
-
-    //     //next[offset + i] = curr[offset + i] + curr[offset + len - i - 1];
-    //     next[ROW2COL(offset + i + halfLen, col, N)] = (curr[ROW2COL(offset + i, col, N)] - curr[ROW2COL(offset + len - i - 1, col, N)]) * cos[cosOffset + i];
-    // }
 }
 
 template <typename TValue, typename TIndex>
@@ -331,18 +287,6 @@ __global__ void computeDctBackward_2(const TValue *__restrict__ curr, TValue *ne
 {
     TIndex halfM = (M >> 1);
     TIndex thread_id = blockIdx.x * blockDim.x + threadIdx.x;
-    // TIndex halfMN = M * halfN;
-    // TIndex halfMN_by_gridDim = halfMN/gridDim.x;
-    // for (TIndex thread_id = halfMN_by_gridDim*blockIdx.x + threadIdx.x; thread_id < halfMN_by_gridDim*(blockIdx.x+1); thread_id += blockDim.x)
-    // for (TIndex thread_id = blockIdx.x * blockDim.x + threadIdx.x; thread_id < halfM; thread_id += blockDim.x * gridDim.x)
-    // {
-    //     TIndex rest = thread_id & (halfM - 1);
-    //     TIndex i = rest & (halfLen - 1);
-    //     TIndex offset = (thread_id - i) * 2;
-
-    //     next[ROW2COL(offset + i * 2, col, N)] = curr[ROW2COL(offset + i, col, N)];
-    //     next[ROW2COL(offset + i * 2 + 1, col, N)] = (i + 1 == halfLen) ? curr[ROW2COL(offset + len - 1, col, N)] : curr[ROW2COL(offset + halfLen + i, col, N)] + curr[ROW2COL(offset + halfLen + i + 1, col, N)];
-    // }
     if (thread_id < halfM)
     {
         TIndex col = blockIdx.y;
@@ -572,7 +516,7 @@ void dct_2d_lee(
     transpose<T>(d_y, d_x, M, N);
     dct_ref_1<T>(d_x, d_y, scratch, d_cos1, N, M);
     transpose<T>(d_y, d_x, N, M);
-    normalize<T><<<(N * M + TPB - 1) / TPB, TPB>>>(d_y, d_x, M, N);
+    normalize<T><<<(N * M + TPB - 1) / TPB, TPB>>>(d_x, d_x, M, N);
     #elif 1
     dct_ref_1<T>(d_x, d_y, scratch, d_cos0, M, N);
     dct_ref_2<T>(d_y, d_y, scratch, d_cos1, M, N);
