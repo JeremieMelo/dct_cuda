@@ -428,8 +428,9 @@ __global__ void dct_transpose_kernel(const TValue* __restrict__ vec, TValue *out
     TValue* curr_ptr = sdata;
     TValue* next_ptr = curr_ptr + N;
     
-    for(TIndex row_id = 0; row_id < M; ++row_id)
-    {
+    TIndex row_id = blockIdx.y;
+    // for(TIndex row_id = 0; row_id < M; ++row_id)
+    // {
         for (TIndex i = threadIdx.x; i < N ; i += blockDim.x)
         {
             curr_ptr[i] = vec[row_id * N + i];
@@ -506,13 +507,13 @@ __global__ void dct_transpose_kernel(const TValue* __restrict__ vec, TValue *out
             next[M] = (i + 1 == halfLen) ? curr[len - 1] : curr[halfLen + i] + curr[halfLen + i + 1];
         }
         __syncthreads();
-    }
+    // }
 }
 
 template <typename TValue>
 void dct_transpose(const TValue *vec, TValue *out, const TValue *cos, int M, int N)
 {
-    dim3 gridSize(1, 1, 1);
+    dim3 gridSize(1, M, 1);
     dim3 blockSize(TPB, 1, 1);
     size_t shared_memory_size = 2 * N * sizeof(TValue);
     dct_transpose_kernel<TValue, int><<<gridSize, blockSize, shared_memory_size>>>(vec, out, cos, M, N);
