@@ -779,11 +779,6 @@ int main()
 
     printf("[D] dct 2D (%d * %d) takes average %g ms\n", M, N, total_time / NUM_RUNS);
 
-    for (int i = 0; i < 10; ++i)
-    {
-        printf("%d: %f\n", i, h_y[i]);
-    }
-
     delete[] h_x;
     delete[] h_y;
     delete[] h_gt;
