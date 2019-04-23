@@ -10,7 +10,7 @@
 #include <cublas_v2.h>
 
 #define PI (3.141592653589793238462643383279502884197169399375105820974944592307816406286208998628034825342117067982148086513282306647093844609550582231725359408128481)
-#define TPB (1024)
+#define TPB (512)
 #define epsilon (1e-2) //relative error
 #define NUM_RUNS (5)
 
@@ -49,7 +49,7 @@ inline bool isPowerOf2(T val)
 }
 
 template <typename T>
-inline void swap(T &x, T &y)
+inline __device__ __host__ void swap(T &x, T &y)
 {
     T tmp = x;
     x = y;
@@ -421,52 +421,101 @@ void dct_ref_2(const TValue *vec, TValue *out, TValue *buf, const TValue *cos, i
     normalize<TValue><<<(N * M + TPB - 1) / TPB, TPB>>>(out, curr, M, N);
 }
 
-template <typename TValue>
-void dct_transpose(const TValue *vec, TValue *out, TValue *buf, const TValue *cos, int M, int N)
+template <typename TValue, typename TIndex>
+__global__ void dct_transpose_kernel(const TValue* __restrict__ vec, TValue *out, const TValue *cos, const int M, const int N)
 {
-    dim3 gridSize((N / 2 + TPB - 1) / TPB, M, 1);
+    extern __shared__ TValue sdata [];
+    TValue* curr_ptr = sdata;
+    TValue* next_ptr = curr_ptr + N;
+    
+    for(TIndex row_id = 0; row_id < M; ++row_id)
+    {
+        for (TIndex i = threadIdx.x; i < N ; i += blockDim.x)
+        {
+            curr_ptr[i] = vec[row_id * N + i];
+        }
+        __syncthreads();
+        
+        // Current bufferfly length and half length    
+        int len = N;
+        int halfLen = len / 2;
+        // Iteratively bi-partition sequences into sub-sequences
+        int cosOffset = 0;
+        
+        const TIndex halfN = halfLen;
+        while (halfLen)
+        {
+            //computeDctForward_1<<<gridSize, blockSize>>>(curr, next, cos, N, len, halfLen, cosOffset);
+            for (TIndex thread_id = threadIdx.x; thread_id < halfN ; thread_id += blockDim.x)
+            {
+                TIndex rest = thread_id & (halfN - 1);
+                TIndex i = rest & (halfLen - 1);
+                TIndex offset = (thread_id - i) * 2;
+                TValue *next = next_ptr + offset + i;
+                const TValue *__restrict__ curr = curr_ptr + offset;
+    
+                next[0] = curr[i] + curr[len - i - 1];
+                next[halfLen] = (curr[i] - curr[len - i - 1]) * cos[cosOffset + i];
+            }
+            cosOffset += halfLen;
+            len = halfLen;
+            halfLen /= 2;
+            __syncthreads();
+            swap(curr_ptr, next_ptr);
+        }
+        __syncthreads();
+        // if(threadIdx.x == 0 && row_id == 100){
+        //     printf("curr_ptr[0]: %f\n", curr_ptr[0]);
+        // }
+        // Bottom-up form the final DCT solution
+        // Note that the case len = 2 will do nothing, so we start from len = 4
+        len = 4;
+        halfLen = 2;
+        while (len < N)
+        {
+            //computeDctBackward_1<<<gridSize, blockSize>>>(curr, next, N, len, halfLen);
+            for (TIndex thread_id = threadIdx.x; thread_id < halfN ; thread_id += blockDim.x)
+            {
+                TIndex rest = thread_id & (halfN - 1);
+                TIndex i = rest & (halfLen - 1);
+                TIndex offset = (thread_id - i) * 2;
+                TValue *next = next_ptr + offset + i * 2;
+                const TValue *curr = curr_ptr + offset;
+    
+                next[0] = curr[i];
+                next[1] = (i + 1 == halfLen) ? curr[len - 1] : curr[halfLen + i] + curr[halfLen + i + 1];
+            }
+            halfLen = len;
+            len *= 2;
+            __syncthreads();
+            swap(curr_ptr, next_ptr);
+        }
+        __syncthreads();
+        
+        //computeDctBackward_lasttime_1<<<gridSize, blockSize>>>(curr, next, M, N, len, halfLen);
+       
+        for (TIndex thread_id = threadIdx.x; thread_id < halfN ; thread_id += blockDim.x)
+        {
+            TIndex rest = thread_id & (halfN - 1);
+            TIndex i = rest & (halfLen - 1);
+            TIndex offset = (thread_id - i) * 2;
+            TValue *next = out + row_id + (offset + i * 2) * M;
+            const TValue *__restrict__ curr = curr_ptr + offset;
+            
+            next[0] = curr[i];
+            next[M] = (i + 1 == halfLen) ? curr[len - 1] : curr[halfLen + i] + curr[halfLen + i + 1];
+        }
+        __syncthreads();
+    }
+}
+
+template <typename TValue>
+void dct_transpose(const TValue *vec, TValue *out, const TValue *cos, int M, int N)
+{
+    dim3 gridSize(1, 1, 1);
     dim3 blockSize(TPB, 1, 1);
-
-    // Pointers point to the beginning indices of two adjacent iterations
-    TValue *curr = buf;
-    TValue *next = out;
-
-    // 'temp' used to store date of two adjacent iterations
-    // Copy 'vec' to the first N element in 'temp'
-    cudaMemcpy(curr, vec, M * N * sizeof(TValue), cudaMemcpyDeviceToDevice);
-
-    // Current bufferfly length and half length
-    int len = N;
-    int halfLen = len / 2;
-
-    // Iteratively bi-partition sequences into sub-sequences
-    int cosOffset = 0;
-    while (halfLen)
-    {
-        computeDctForward_1<<<gridSize, blockSize>>>(curr, next, cos, N, len, halfLen, cosOffset);
-        cosOffset += halfLen;
-        len = halfLen;
-        halfLen /= 2;
-        swap(curr, next);
-    }
-
-    // Bottom-up form the final DCT solution
-    // Note that the case len = 2 will do nothing, so we start from len = 4
-    len = 4;
-    halfLen = 2;
-    while (len < N)
-    {
-        computeDctBackward_1<<<gridSize, blockSize>>>(curr, next, N, len, halfLen);
-        halfLen = len;
-        len *= 2;
-        swap(curr, next);
-    }
-    computeDctBackward_lasttime_1<<<gridSize, blockSize>>>(curr, next, M, N, len, halfLen);
-    // Populate the final results into 'out'
-    if (next != out)
-    {
-        swap(out, buf);
-    }
+    size_t shared_memory_size = 2 * N * sizeof(TValue);
+    dct_transpose_kernel<TValue, int><<<gridSize, blockSize, shared_memory_size>>>(vec, out, cos, M, N);
 }
 
 template <typename T>
@@ -505,12 +554,12 @@ void dct_2d_lee(
 
     timer_start = get_globaltime();
     cudaMalloc((void **)&d_y, size);
-    cudaMalloc((void **)&scratch, size);
+    // cudaMalloc((void **)&scratch, size);
 
     #if 1
-    dct_transpose<T>(d_x, d_y, scratch, d_cos0, M, N);
-    dct_transpose<T>(d_y, d_y, scratch, d_cos1, N, M);
-    normalize<T><<<(N * M + TPB - 1) / TPB, TPB>>>(d_y, d_y, M, N);
+    dct_transpose<T>(d_x, d_y, d_cos0, M, N);
+    dct_transpose<T>(d_y, d_x, d_cos1, N, M);
+    normalize<T><<<(N * M + TPB - 1) / TPB, TPB>>>(d_x, d_x, M, N);
     #elif 0
     dct_ref_1<T>(d_x, d_y, scratch, d_cos0, M, N);
     transpose<T>(d_y, d_x, M, N);
@@ -523,10 +572,10 @@ void dct_2d_lee(
     #endif
 
     cudaDeviceSynchronize();
-    cudaFree(scratch);
+    // cudaFree(scratch);
     timer_stop = get_globaltime();
 
-    cudaMemcpy(h_y, d_y, size, cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_y, d_x, size, cudaMemcpyDeviceToHost);
 
     cudaStreamDestroy(streams[0]);
     cudaStreamDestroy(streams[1]);
