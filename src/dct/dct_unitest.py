@@ -3,7 +3,7 @@
 '''
 @Author: Jake Gu
 @Date: 2019-04-13 19:59:17
-@LastEditTime: 2019-04-20 17:35:08
+@LastEditTime: 2019-04-22 20:08:22
 '''
 ##
 # @file   dct_unitest.py
@@ -444,7 +444,7 @@ def eval_runtime():
     # x = torch.tensor([1, 2, 7, 9, 20, 31], dtype=torch.float64)
     # print(dct_N(x))
 
-    N = 4096
+    N = 512
     runs = 100
     x = torch.empty(10, N, N, dtype=torch.float64).uniform_(0, 10.0).cuda()
     perm = discrete_spectral_transform.get_perm(N, dtype=torch.int64, device=x.device)

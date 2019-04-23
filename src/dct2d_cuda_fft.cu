@@ -8,6 +8,7 @@
 #include <fstream>
 #include <assert.h>
 #include <cublas_v2.h>
+#include <cufft.h>
 
 #define PI (3.141592653589793238462643383279502884197169399375105820974944592307816406286208998628034825342117067982148086513282306647093844609550582231725359408128481)
 #define TPB (256)
@@ -610,9 +611,40 @@ void dct_transpose_normalize(const TValue *vec, TValue *out, const TValue *cos, 
     size_t shared_memory_size = 2 * N * sizeof(TValue);
     dct_transpose_normalize_kernel<TValue, int><<<gridSize, blockSize, shared_memory_size>>>(vec, out, cos, M, N);
 }
+#define NX 512
+#define BATCH 256
+
+#define ISTRIDE 1   // distance between successive input elements in innermost dimension
+#define OSTRIDE 1   // distance between successive output elements in innermost dimension
+#define IX (NX+2)
+#define OX (NX+3)
+#define IDIST (IX*IY*ISTRIDE+3) // distance between first element of two consecutive signals in a batch of input data
+#define ODIST (OX*OY*OSTRIDE+5) // distance between first element of two consecutive signals in a batch of output data
 
 template <typename T>
-void dct_2d_lee(
+void dct_1d_cufft(const cufftDoubleComplex *h_x,
+                    T *h_y,
+                    const int M,
+                    const int N)
+{
+    cufftHandle plan;
+    const int RANK = 1;
+    const int NX = N;
+    const int 
+    // cufftDoubleComplex *data;
+    // ...
+    // cudaMalloc((void**)&data, sizeof(cufftDoubleComplex)*NX*BATCH);
+    cufftPlanMany(&plan, RANK, NX, &iembed, istride, idist, 
+        &oembed, ostride, odist, CUFFT_C2C, BATCH);
+    ...
+    cufftExecC2C(plan, data, data, CUFFT_FORWARD);
+    cudaDeviceSynchronize();
+    ...
+    cufftDestroy(plan);
+    cudaFree(data);
+}
+template <typename T>
+void dct_2d_fft(
     const T *h_x,
     T *h_y,
     const int M,
@@ -629,6 +661,8 @@ void dct_2d_lee(
         printf("Input length is not power of 2.\n");
         assert(0);
     }
+
+    
 
     size_t size = M * N * sizeof(T);
     cudaMalloc((void **)&d_x, size);
