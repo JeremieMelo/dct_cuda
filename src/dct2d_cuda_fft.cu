@@ -311,6 +311,16 @@ __global__ void normalize(T *x, const T *__restrict__ y, const int M, const int 
 }
 
 template <typename T>
+__global__ void normalize(T *x, const cufftDoubleComplex *__restrict__ y, const int M, const int N)
+{
+    int tid = blockDim.x * blockIdx.x + threadIdx.x;
+    if (tid < M * N)
+    {
+        x[tid] = y[tid].x / (M * N) * 4;
+    }
+}
+
+template <typename T>
 __global__ void normalize4(T *x, const T * __restrict__ y, const int size, T factor)
 {
    
@@ -611,38 +621,51 @@ void dct_transpose_normalize(const TValue *vec, TValue *out, const TValue *cos, 
     size_t shared_memory_size = 2 * N * sizeof(TValue);
     dct_transpose_normalize_kernel<TValue, int><<<gridSize, blockSize, shared_memory_size>>>(vec, out, cos, M, N);
 }
-#define NX 512
-#define BATCH 256
-
-#define ISTRIDE 1   // distance between successive input elements in innermost dimension
-#define OSTRIDE 1   // distance between successive output elements in innermost dimension
-#define IX (NX+2)
-#define OX (NX+3)
-#define IDIST (IX*IY*ISTRIDE+3) // distance between first element of two consecutive signals in a batch of input data
-#define ODIST (OX*OY*OSTRIDE+5) // distance between first element of two consecutive signals in a batch of output data
 
 template <typename T>
-void dct_1d_cufft(const cufftDoubleComplex *h_x,
-                    T *h_y,
-                    const int M,
-                    const int N)
+__global__ void merge_to_complex(const T* d_x, cufftDoubleComplex * scratch, const int M, const int N)
+{
+    const int tid = blockDim.x * blockIdx.x + threadIdx.x;
+    const int rid = blockIdx.y;
+    if(tid < N)
+    {
+        scratch[tid].x = d_x[rid*2*N + tid];
+        scratch[tid].y = d_x[rid*2*N + tid + N];
+    }
+}
+
+template <typename T>
+void dct_1d_z2z(cufftDoubleComplex *d_x,
+                cufftDoubleComplex *d_y,
+                const int M,
+                const int N)
 {
     cufftHandle plan;
-    const int RANK = 1;
-    const int NX = N;
-    const int 
-    // cufftDoubleComplex *data;
-    // ...
-    // cudaMalloc((void**)&data, sizeof(cufftDoubleComplex)*NX*BATCH);
-    cufftPlanMany(&plan, RANK, NX, &iembed, istride, idist, 
-        &oembed, ostride, odist, CUFFT_C2C, BATCH);
-    ...
-    cufftExecC2C(plan, data, data, CUFFT_FORWARD);
+    int n[1] = {N};
+    int BATCH = M / 2;
+
+    cufftPlanMany(&plan, 1, n, 
+                  NULL, 1, N, 
+                  NULL, 1, N,
+                  CUFFT_Z2Z, BATCH);
+    cufftExecZ2Z(plan, d_x, d_y, CUFFT_FORWARD);
     cudaDeviceSynchronize();
-    ...
     cufftDestroy(plan);
-    cudaFree(data);
 }
+
+template <typename T>
+void dct_2d_d2z(cufftDoubleReal *d_x,
+                cufftDoubleComplex *d_y,
+                const int M,
+                const int N)
+{
+    cufftHandle plan;
+    cufftPlan2d(&plan, M, N, CUFFT_D2Z);
+    cufftExecD2Z(plan, d_x, d_y);
+    cudaDeviceSynchronize();
+    cufftDestroy(plan);
+}
+
 template <typename T>
 void dct_2d_fft(
     const T *h_x,
@@ -650,11 +673,9 @@ void dct_2d_fft(
     const int M,
     const int N)
 {
-    T *d_x;
+    cufftDoubleReal *d_x;
     T *d_y;
-    T *scratch;
-    T *d_cos0;
-    T *d_cos1;
+    cufftDoubleComplex *scratch;
 
     if (!isPowerOf2<int>(N) || !isPowerOf2<int>(M))
     {
@@ -662,33 +683,29 @@ void dct_2d_fft(
         assert(0);
     }
 
-    
 
     size_t size = M * N * sizeof(T);
     cudaMalloc((void **)&d_x, size);
-    cudaMalloc((void **)&d_cos0, N * sizeof(T)); // row
-    cudaMalloc((void **)&d_cos1, M * sizeof(T)); // column
 
     cudaMemcpy(d_x, h_x, size, cudaMemcpyHostToDevice);
 
-    cudaStream_t streams[2];
-    cudaStreamCreate(&streams[0]);
-    cudaStreamCreate(&streams[1]);
-
-    precompute_dct_cos_kernel<T><<<(N + TPB - 1) / TPB, TPB, 0, streams[0]>>>(d_cos0, N, (int)log2(N));
-    precompute_dct_cos_kernel<T><<<(M + TPB - 1) / TPB, TPB, 0, streams[1]>>>(d_cos1, M, (int)log2(M));
-    cudaDeviceSynchronize();
-
     timer_start = get_globaltime();
     cudaMalloc((void **)&d_y, size);
-    cudaMalloc((void **)&scratch, size);
+    cudaMalloc((void **)&scratch, size * 2);
+    
+    // cudaMemset(scratch, 0, size * 2);
+    // cudaMemcpy2D(scratch, 2 * sizeof(T), d_x, 1*sizeof(T), sizeof(T), M * N, cudaMemcpyDeviceToDevice);
 
-    #if 1
+    dct_2d_d2z<T>(d_x, scratch, M, N);
+    normalize<T><<<(N * M + TPB - 1) / TPB, TPB>>>(d_y, scratch, M, N);
+    // cudaMemcpy2D(d_y, sizeof(cufftDoubleReal), scratch, 2 * sizeof(cufftDoubleReal), sizeof(cufftDoubleReal), M * N, cudaMemcpyDeviceToDevice);
+    // normalize4<T><<<(N * M /4 + TPB - 1) / TPB, TPB>>>(d_y, d_y, M * N / 4, 4. / (M * N));
+    #if 0
     dct_transpose<T>(d_x, scratch, d_cos0, M, N);
     dct_transpose<T>(scratch, d_y, d_cos1, N, M);
     // normalize<T><<<(N * M + TPB - 1) / TPB, TPB>>>(d_y, d_y, M, N);
     normalize4<T><<<(N * M /4 + TPB - 1) / TPB, TPB>>>(d_y, d_y, M * N / 4, 4. / (M * N));
-    #elif 1
+    #elif 0
     dct_transpose<T>(d_x, scratch, d_cos0, M, N);
     dct_transpose_normalize<T>(scratch, d_y, d_cos1, N, M);
     #elif 0
@@ -697,7 +714,7 @@ void dct_2d_fft(
     dct_ref_1<T>(scratch, d_y, scratch, d_cos1, N, M);
     transpose<T>(d_y, scratch, N, M);
     normalize<T><<<(N * M + TPB - 1) / TPB, TPB>>>(d_y, scratch, M, N);
-    #elif 1
+    #elif 0
     dct_ref_1<T>(d_x, d_y, scratch, d_cos0, M, N);
     dct_ref_2<T>(d_y, d_y, scratch, d_cos1, M, N);
     #endif
@@ -707,8 +724,6 @@ void dct_2d_fft(
 
     cudaMemcpy(h_y, d_y, size, cudaMemcpyDeviceToHost);
 
-    cudaStreamDestroy(streams[0]);
-    cudaStreamDestroy(streams[1]);
     cudaFree(d_x);
     cudaFree(d_y);
     cudaFree(scratch);
@@ -806,7 +821,7 @@ int main()
     double total_time = 0;
     for (int i = 0; i < NUM_RUNS; ++i)
     {
-        dct_2d_lee<dtype>(h_x, h_y, M, N);
+        dct_2d_fft<dtype>(h_x, h_y, M, N);
         int flag = validate2D<dtype>(h_y, h_gt, M, N);
         printf("[I] validation: %d\n", flag);
         printf("[D] dct 2D takes %g ms\n", (timer_stop - timer_start) * get_timer_period());
