@@ -10,7 +10,7 @@
 #include <cublas_v2.h>
 
 #define PI (3.141592653589793238462643383279502884197169399375105820974944592307816406286208998628034825342117067982148086513282306647093844609550582231725359408128481)
-#define TPB (256)
+#define TPB (1024)
 #define epsilon (1e-2) //relative error
 #define NUM_RUNS (5)
 
@@ -310,14 +310,12 @@ __global__ void normalize(T *x, const T *__restrict__ y, const int M, const int 
 }
 
 template <typename T>
-__global__ void normalize4(T *x, const T * __restrict__ y, const int size, T factor)
+__global__ void normalize4(T *x, const T *__restrict__ y, const int size, T factor)
 {
-   
     int tid = blockDim.x * blockIdx.x + threadIdx.x;
-    double4 * tmp_x = (double4*) x;
-    const double4 *  __restrict__ tmp_y = (const double4*) y;
-    tmp_x[tid] = make_double4(tmp_y[tid].x*factor,tmp_y[tid].y*factor,tmp_y[tid].z*factor,tmp_y[tid].w*factor);
-    
+    double4 *tmp_x = (double4 *)x;
+    const double4 *__restrict__ tmp_y = (const double4 *)y;
+    tmp_x[tid] = make_double4(tmp_y[tid].x * factor, tmp_y[tid].y * factor, tmp_y[tid].z * factor, tmp_y[tid].w * factor);
 }
 
 /// The implementation of fast Discrete Cosine Transform (DCT) algorithm and its inverse (IDCT) are Lee's algorithms
@@ -433,30 +431,29 @@ void dct_ref_2(const TValue *vec, TValue *out, TValue *buf, const TValue *cos, i
 }
 
 template <typename TValue, typename TIndex>
-__global__ __launch_bounds__(1024,10)
-void dct_transpose_kernel(const TValue* __restrict__ vec, TValue *out, const TValue *cos, const int M, const int N)
+__global__ __launch_bounds__(1024, 10) void dct_transpose_kernel(const TValue *__restrict__ vec, TValue *out, const TValue *cos, const int M, const int N)
 {
-    extern __shared__ TValue sdata [];
-    TValue* curr_ptr = sdata;
-    TValue* next_ptr = curr_ptr + N;
-    
-    for (TIndex i = threadIdx.x; i < N ; i += blockDim.x)
+    extern __shared__ TValue sdata[];
+    TValue *curr_ptr = sdata;
+    TValue *next_ptr = curr_ptr + N;
+
+    for (TIndex i = threadIdx.x; i < N; i += blockDim.x)
     {
         curr_ptr[i] = vec[blockIdx.y * N + i];
     }
     __syncthreads();
-    
-    // Current bufferfly length and half length    
+
+    // Current bufferfly length and half length
     int len = N;
     int halfLen = len / 2;
     // Iteratively bi-partition sequences into sub-sequences
     int cosOffset = 0;
-    
+
     const TIndex halfN = halfLen;
     while (halfLen)
     {
-        #pragma unroll 4
-        for (TIndex thread_id = threadIdx.x; thread_id < halfN ; thread_id += blockDim.x)
+        #pragma unroll 2
+        for (TIndex thread_id = threadIdx.x; thread_id < halfN; thread_id += blockDim.x)
         {
             TIndex rest = thread_id & (halfN - 1);
             TIndex i = rest & (halfLen - 1);
@@ -480,19 +477,19 @@ void dct_transpose_kernel(const TValue* __restrict__ vec, TValue *out, const TVa
     halfLen = 2;
     while (len < N)
     {
-        #pragma unroll 4
-        for (TIndex thread_id = threadIdx.x; thread_id < halfN ; thread_id += blockDim.x)
+        #pragma unroll 2
+        for (TIndex thread_id = threadIdx.x; thread_id < halfN; thread_id += blockDim.x)
         {
             TIndex rest = thread_id & (halfN - 1);
             TIndex i = rest & (halfLen - 1);
             TIndex offset = (thread_id - i) * 2;
             TValue *next = next_ptr + offset + i * 2;
             TValue *curr = curr_ptr + offset;
-            
+
             TValue tmp1 = curr[i];
             TValue tmp2 = (i + 1 == halfLen) ? curr[len - 1] : curr[halfLen + i] + curr[halfLen + i + 1];
-        
-            *(double2*)next = make_double2(tmp1, tmp2);
+
+            *(double2 *)next = make_double2(tmp1, tmp2);
             // next[0] = curr[i];
             // next[1] = (i + 1 == halfLen) ? curr[len - 1] : curr[halfLen + i] + curr[halfLen + i + 1];
         }
@@ -501,15 +498,15 @@ void dct_transpose_kernel(const TValue* __restrict__ vec, TValue *out, const TVa
         __syncthreads();
         swap(curr_ptr, next_ptr);
     }
-    #pragma unroll 4
-    for (TIndex thread_id = threadIdx.x; thread_id < halfN ; thread_id += blockDim.x)
+    #pragma unroll 2
+    for (TIndex thread_id = threadIdx.x; thread_id < halfN; thread_id += blockDim.x)
     {
         TIndex rest = thread_id & (halfN - 1);
         TIndex i = rest & (halfLen - 1);
         TIndex offset = (thread_id - i) * 2;
         TValue *next = out + blockIdx.y + (offset + i * 2) * M;
         TValue *curr = curr_ptr + offset;
-        
+
         next[0] = curr[i];
         next[M] = (i + 1 == halfLen) ? curr[len - 1] : curr[halfLen + i] + curr[halfLen + i + 1];
     }
@@ -517,28 +514,28 @@ void dct_transpose_kernel(const TValue* __restrict__ vec, TValue *out, const TVa
 }
 
 template <typename TValue, typename TIndex>
-__global__ void dct_transpose_normalize_kernel(const TValue* __restrict__ vec, TValue *out, const TValue *cos, const int M, const int N)
+__global__ void dct_transpose_normalize_kernel(const TValue *__restrict__ vec, TValue *out, const TValue *cos, const int M, const int N)
 {
-    extern __shared__ TValue sdata [];
-    TValue* curr_ptr = sdata;
-    TValue* next_ptr = curr_ptr + N;
-    
-    for (TIndex i = threadIdx.x; i < N ; i += blockDim.x)
+    extern __shared__ TValue sdata[];
+    TValue *curr_ptr = sdata;
+    TValue *next_ptr = curr_ptr + N;
+
+    for (TIndex i = threadIdx.x; i < N; i += blockDim.x)
     {
         curr_ptr[i] = vec[blockIdx.y * N + i];
     }
     __syncthreads();
-    
-    // Current bufferfly length and half length    
+
+    // Current bufferfly length and half length
     int len = N;
     int halfLen = len / 2;
     // Iteratively bi-partition sequences into sub-sequences
     int cosOffset = 0;
-    
+
     const TIndex halfN = halfLen;
     while (halfLen)
     {
-        for (TIndex thread_id = threadIdx.x; thread_id < halfN ; thread_id += blockDim.x)
+        for (TIndex thread_id = threadIdx.x; thread_id < halfN; thread_id += blockDim.x)
         {
             TIndex rest = thread_id & (halfN - 1);
             TIndex i = rest & (halfLen - 1);
@@ -555,14 +552,14 @@ __global__ void dct_transpose_normalize_kernel(const TValue* __restrict__ vec, T
         __syncthreads();
         swap(curr_ptr, next_ptr);
     }
-    
+
     // Bottom-up form the final DCT solution
     // Note that the case len = 2 will do nothing, so we start from len = 4
     len = 4;
     halfLen = 2;
     while (len < N)
     {
-        for (TIndex thread_id = threadIdx.x; thread_id < halfN ; thread_id += blockDim.x)
+        for (TIndex thread_id = threadIdx.x; thread_id < halfN; thread_id += blockDim.x)
         {
             TIndex rest = thread_id & (halfN - 1);
             TIndex i = rest & (halfLen - 1);
@@ -578,15 +575,15 @@ __global__ void dct_transpose_normalize_kernel(const TValue* __restrict__ vec, T
         __syncthreads();
         swap(curr_ptr, next_ptr);
     }
-       
-    for (TIndex thread_id = threadIdx.x; thread_id < halfN ; thread_id += blockDim.x)
+
+    for (TIndex thread_id = threadIdx.x; thread_id < halfN; thread_id += blockDim.x)
     {
         TIndex rest = thread_id & (halfN - 1);
         TIndex i = rest & (halfLen - 1);
         TIndex offset = (thread_id - i) * 2;
         TValue *next = out + blockIdx.y + (offset + i * 2) * M;
         TValue *curr = curr_ptr + offset;
-        
+
         next[0] = curr[i] / (M * N) * 4;
         next[M] = ((i + 1 == halfLen) ? curr[len - 1] : curr[halfLen + i] + curr[halfLen + i + 1]) / (M * N) * 4;
     }
@@ -597,7 +594,7 @@ template <typename TValue>
 void dct_transpose(const TValue *vec, TValue *out, const TValue *cos, int M, int N)
 {
     dim3 gridSize(1, M, 1);
-    dim3 blockSize(TPB, 1, 1);
+    dim3 blockSize(std::min(TPB, N >> 1), 1, 1);
     size_t shared_memory_size = 2 * N * sizeof(TValue);
     dct_transpose_kernel<TValue, int><<<gridSize, blockSize, shared_memory_size>>>(vec, out, cos, M, N);
 }
@@ -606,7 +603,7 @@ template <typename TValue>
 void dct_transpose_normalize(const TValue *vec, TValue *out, const TValue *cos, int M, int N)
 {
     dim3 gridSize(1, M, 1);
-    dim3 blockSize(TPB, 1, 1);
+    dim3 blockSize(std::min(TPB, N >> 1), 1, 1);
     size_t shared_memory_size = 2 * N * sizeof(TValue);
     dct_transpose_normalize_kernel<TValue, int><<<gridSize, blockSize, shared_memory_size>>>(vec, out, cos, M, N);
 }
@@ -653,7 +650,7 @@ void dct_2d_lee(
     dct_transpose<T>(d_x, scratch, d_cos0, M, N);
     dct_transpose<T>(scratch, d_y, d_cos1, N, M);
     // normalize<T><<<(N * M + TPB - 1) / TPB, TPB>>>(d_y, d_y, M, N);
-    normalize4<T><<<(N * M /4 + TPB - 1) / TPB, TPB>>>(d_y, d_y, M * N / 4, 4. / (M * N));
+    normalize4<T><<<(N * M / 4 + TPB - 1) / TPB, TPB>>>(d_y, d_y, M * N / 4, 4. / (M * N));
     #elif 1
     dct_transpose<T>(d_x, scratch, d_cos0, M, N);
     dct_transpose_normalize<T>(scratch, d_y, d_cos1, N, M);
@@ -727,8 +724,6 @@ void load_data(T *&data, T *&result, int &M, int &N)
 
     int i = 0;
     T val;
-    // int N;
-    // int M;
     input_file >> M;
     input_file >> N;
     printf("M: %d\n", M);
@@ -765,21 +760,24 @@ int main()
     load_data<dtype>(h_x, h_gt, M, N);
     h_y = new dtype[M * N];
 
-    for (int i = 0; i < 10; ++i)
-    {
-        printf("%d: %f\n", i, h_x[i]);
-    }
     double total_time = 0;
     for (int i = 0; i < NUM_RUNS; ++i)
     {
         dct_2d_lee<dtype>(h_x, h_y, M, N);
         int flag = validate2D<dtype>(h_y, h_gt, M, N);
-        printf("[I] validation: %d\n", flag);
+        if (!flag)
+        {
+            printf("[I] Error! Results are incorrect.\n", flag);
+            for (int i = 0; i < 5; ++i)
+            {
+                printf("index: %d, result: %f, GT: %f\n", i, h_y[i], h_gt[i]);
+            }
+        }
         printf("[D] dct 2D takes %g ms\n", (timer_stop - timer_start) * get_timer_period());
-        total_time += i > 0 ? (timer_stop - timer_start) * get_timer_period() : 0;
+        total_time += (timer_stop - timer_start) * get_timer_period();
     }
 
-    printf("[D] dct 2D (%d * %d) takes average %g ms\n", M, N, total_time / (NUM_RUNS - 1));
+    printf("[D] dct 2D (%d * %d) takes average %g ms\n", M, N, total_time / NUM_RUNS);
 
     for (int i = 0; i < 10; ++i)
     {
