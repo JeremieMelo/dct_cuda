@@ -7,7 +7,6 @@
 #include <string>
 #include <fstream>
 #include <assert.h>
-#include <cublas_v2.h>
 #include <cufft.h>
 
 #define PI (3.141592653589793238462643383279502884197169399375105820974944592307816406286208998628034825342117067982148086513282306647093844609550582231725359408128481)
@@ -122,32 +121,27 @@ inline __device__ cufftDoubleComplex complexConj(const cufftDoubleComplex &x)
     return res;
 }
 
-__global__ void precomputeExpk(cufftDoubleComplex *expkM, cufftDoubleComplex *expkN, cufftDoubleComplex *expkMconj, const int M, const int N)
+__global__ void precomputeExpk(cufftDoubleComplex *expkM, cufftDoubleComplex *expkN, const int M, const int N)
 {
     const int tid = blockDim.x * blockIdx.x + threadIdx.x;
     if (tid < M)
     {
         int hid = tid;
         cufftDoubleComplex W_h_4M = make_double2(cos(PI * hid / (2 * M)), -1 * sin(PI * hid / (M * 2)));
-        cufftDoubleComplex W_h_4M_conj = make_double2(W_h_4M.x, -1 * W_h_4M.y);
         expkM[hid] = W_h_4M;
-        expkMconj[hid] = W_h_4M_conj;
     }
     if (tid < N)
     {
         int wid = tid;
         cufftDoubleComplex W_w_4N = make_double2(cos(PI * wid / (2 * N)), -1 * sin(PI * wid / (N * 2)));
-        // cufftDoubleComplex W_w_4N_conj = make_double2(W_w_4N.x, -1 * W_w_4N.y);
         expkN[wid] = W_w_4N;
-        // expkNconj[wid] = W_w_4N_conj;
     }
 }
 
 template <typename T>
 __global__ void computeMulExpk(const cufftDoubleComplex *V, T *y, const int M, const int N,
                                const cufftDoubleComplex *__restrict__ expkM,
-                               const cufftDoubleComplex *__restrict__ expkN,
-                               const cufftDoubleComplex *__restrict__ expkMconj)
+                               const cufftDoubleComplex *__restrict__ expkN)
 {
     const int wid = blockDim.x * blockIdx.x + threadIdx.x;
     const int hid = blockDim.y * blockIdx.y + threadIdx.y;
@@ -169,22 +163,22 @@ __global__ void computeMulExpk(const cufftDoubleComplex *V, T *y, const int M, c
         }
         else
         {
-            cufftDoubleComplex tmp1, tmp2;
+            cufftDoubleComplex tmp1, tmp2, tmp;
             if (wid <= N / 2)
             {
                 tmp1 = V[INDEX(hid, wid, N / 2 + 1)];
                 tmp2 = V[INDEX(M - hid, wid, N / 2 + 1)];
+                tmp.x = expkM[hid].x * (tmp1.x + tmp2.x) + expkM[hid].y * (tmp2.y - tmp1.y);
+                tmp.y = expkM[hid].x * (tmp1.y + tmp2.y) + expkM[hid].y * (tmp1.x - tmp2.x);
             }
             else
             {
-                tmp1 = complexConj(V[INDEX(M - hid, N - wid, N / 2 + 1)]);
-                tmp2 = complexConj(V[INDEX(hid, N - wid, N / 2 + 1)]);
+                tmp1 = V[INDEX(M - hid, N - wid, N / 2 + 1)];
+                tmp2 = V[INDEX(hid, N - wid, N / 2 + 1)];
+                tmp.x = expkM[hid].x * (tmp1.x + tmp2.x) + expkM[hid].y * (tmp1.y - tmp2.y);
+                tmp.y = expkM[hid].y * (tmp1.x - tmp2.x) - expkM[hid].x * (tmp1.y + tmp2.y);
             }
-
-            tmp1 = complexMul(expkM[hid], tmp1);
-            tmp2 = complexMul(expkMconj[hid], tmp2);
-            tmp1 = complexAverage(tmp1, tmp2);
-            y[INDEX(hid, wid, N)] = RealPartOfMul(expkN[wid], tmp1) * 4. / (M * N);
+            y[INDEX(hid, wid, N)] = RealPartOfMul(expkN[wid], tmp) * 2. / (M * N);
         }
     }
 }
@@ -227,7 +221,7 @@ void dct_2d_fft(const T *h_x, T *h_y, const int M, const int N)
     cufftDoubleReal *d_x;
     T *d_y;
     cufftDoubleComplex *scratch;
-    cufftDoubleComplex *expkM, *expkN, *expkMconj;
+    cufftDoubleComplex *expkM, *expkN;
 
     if (!isPowerOf2<int>(N) || !isPowerOf2<int>(M))
     {
@@ -239,12 +233,11 @@ void dct_2d_fft(const T *h_x, T *h_y, const int M, const int N)
     checkCUDA(cudaMalloc((void **)&d_x, size));
     checkCUDA(cudaMalloc((void **)&expkM, M * sizeof(cufftDoubleComplex)));
     checkCUDA(cudaMalloc((void **)&expkN, N * sizeof(cufftDoubleComplex)));
-    checkCUDA(cudaMalloc((void **)&expkMconj, M * sizeof(cufftDoubleComplex)));
 
     checkCUDA(cudaMemcpy(d_x, h_x, size, cudaMemcpyHostToDevice));
     dim3 gridSize((N + TPB - 1) / TPB, (M + TPB - 1) / TPB, 1);
     dim3 blockSize(TPB, TPB, 1);
-    precomputeExpk<<<(std::max(M, N) + 1023) / 1024, 1024>>>(expkM, expkN, expkMconj, M, N);
+    precomputeExpk<<<(std::max(M, N) + 1023) / 1024, 1024>>>(expkM, expkN, M, N);
     cudaDeviceSynchronize();
 
     timer_start = get_globaltime();
@@ -256,7 +249,7 @@ void dct_2d_fft(const T *h_x, T *h_y, const int M, const int N)
 
     dct_2d_d2z<T>(d_y, scratch, M, N);
 
-    computeMulExpk<T><<<gridSize, blockSize>>>(scratch, d_y, M, N, expkM, expkN, expkMconj);
+    computeMulExpk<T><<<gridSize, blockSize>>>(scratch, d_y, M, N, expkM, expkN);
     cudaDeviceSynchronize();
     timer_stop = get_globaltime();
 
@@ -267,7 +260,6 @@ void dct_2d_fft(const T *h_x, T *h_y, const int M, const int N)
     cudaFree(scratch);
     cudaFree(expkM);
     cudaFree(expkN);
-    cudaFree(expkMconj);
 }
 
 template <typename T>
