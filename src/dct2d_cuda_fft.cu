@@ -11,7 +11,7 @@
 #include <cufft.h>
 
 #define PI (3.141592653589793238462643383279502884197169399375105820974944592307816406286208998628034825342117067982148086513282306647093844609550582231725359408128481)
-#define TPB (256)
+#define TPB (32)
 #define epsilon (1e-2) //relative error
 #define NUM_RUNS (5)
 
@@ -105,532 +105,81 @@ inline void transpose(T *&src_ptr, T *&dst, const int M, const int N)
     cublasDestroy(handle);
 }
 
-/// Precompute cosine values needed for N-point dct
-/// @param  cos  size N - 1 buffer on GPU, contains the result after function call
-/// @param  N    the length of target dct, must be power of 2
-template <typename TValue>
-__global__ void precompute_dct_cos_kernel_backup(TValue *d_cos, TValue *scratch, int N)
+inline __device__ int INDEX(const int hid, const int wid, const int N)
 {
-    const int tid = blockDim.x * blockIdx.x + threadIdx.x;
-    if (tid < N - 1)
-    {
-        int sum = N / 2;
-        int halfLen = N / 2;
-        while (tid >= sum)
-        {
-            halfLen = halfLen / 2;
-            sum += halfLen;
-        }
-        TValue phase = (0.5 + tid - (sum - halfLen)) * PI / (halfLen << 1);
-        d_cos[tid] = 0.5 / cos(phase);
-    }
-    else if (tid == N - 1)
-    {
-        d_cos[tid] = 0;
-    }
-}
-
-/// Precompute cosine values needed for N-point dct
-/// @param  cos  size N - 1 buffer on GPU, contains the result after function call
-/// @param  N    the length of target dct, must be power of 2
-template <typename TValue>
-__global__ void precompute_dct_cos_kernel(TValue *d_cos, int N, int log_N)
-{
-    const int tid = blockDim.x * blockIdx.x + threadIdx.x;
-    const int total_height = log_N;
-    if (tid < N - 1)
-    {
-        int k = N - tid - 1;
-        // int total_height = LogBase2(N);
-        int height = LogBase2(k);
-        // int len = N / (1 << (total_height - height - 1));
-        int len = 1 << (height + 1);
-        int i = len - k - 1;
-
-        TValue phase = (0.5 + i) * PI / len;
-        d_cos[tid] = 0.5 / cos(phase);
-    }
-    else if (tid == N - 1)
-    {
-        d_cos[tid] = 0;
-    }
-}
-
-/// Precompute cosine values needed for N-point dct
-/// @param  cos  size N - 1 buffer on GPU, contains the result after function call
-/// @param  N    the length of target dct, must be power of 2
-template <typename TValue>
-void precompute_dct_cos(TValue *cos, int N)
-{
-    // The input length must be power of 2
-    if (!isPowerOf2<int>(N))
-    {
-        printf("Input length is not power of 2.\n");
-        assert(0);
-    }
-    timer_start = get_globaltime();
-
-    // create the array on host
-    TValue *cos_host = new TValue[N];
-
-    int offset = 0;
-    int halfLen = N / 2;
-    while (halfLen)
-    {
-        TValue phaseStep = PI / (halfLen << 1);
-        // TValue phase_start = 0.5 * phaseStep;
-        // #pragma omp parallel for
-        for (int i = 0; i < halfLen; ++i)
-        {
-            TValue phase = (0.5 + i) * phaseStep;
-            cos_host[offset + i] = 0.5 / std::cos(phase);
-        }
-        offset += halfLen;
-        halfLen >>= 1;
-    }
-    // printf("last cos: %f\n", cos_host[N-1]);
-    // while (halfLen)
-    // {
-    //     TValue phaseStep = 0.5 * PI / halfLen;
-    //     TValue phase = 0.5 * phaseStep;
-    //     for (int i = 0; i < halfLen; ++i)
-    //     {
-    //         cos_host[offset + i] = 0.5 / std::cos(phase);
-    //         phase += phaseStep;
-    //     }
-    //     offset += halfLen;
-    //     halfLen /= 2;
-    // }
-
-    // copy to GPU
-    cudaMemcpy(cos, cos_host, N * sizeof(TValue), cudaMemcpyHostToDevice);
-
-    delete[] cos_host;
-    timer_stop = get_globaltime();
-    printf("[D] precompute cos takes %g ms\n", (timer_stop - timer_start) * get_timer_period());
-}
-
-template <typename TValue, typename TIndex>
-__global__ void computeDctForward_1(const TValue *__restrict__ curr_ptr, TValue *next_ptr, const TValue *cos, TIndex N, TIndex len, TIndex halfLen, TIndex cosOffset)
-{
-    TIndex halfN = (N >> 1);
-    TIndex thread_id = blockIdx.x * blockDim.x + threadIdx.x;
-    if (thread_id < halfN)
-    {
-        TIndex rest = thread_id & (halfN - 1);
-        TIndex i = rest & (halfLen - 1);
-        TIndex offset = (thread_id - i) * 2 + blockIdx.y * N;
-        TValue *next = next_ptr + offset + i;
-        const TValue *__restrict__ curr = curr_ptr + offset;
-
-        next[0] = curr[i] + curr[len - i - 1];
-        next[halfLen] = (curr[i] - curr[len - i - 1]) * cos[cosOffset + i];
-    }
-}
-
-template <typename TValue, typename TIndex>
-__global__ void computeDctBackward_1(const TValue *__restrict__ curr_ptr, TValue *next_ptr, TIndex N, TIndex len, TIndex halfLen)
-{
-    TIndex halfN = (N >> 1);
-    TIndex thread_id = blockIdx.x * blockDim.x + threadIdx.x;
-    if (thread_id < halfN)
-    {
-        TIndex rest = thread_id & (halfN - 1);
-        TIndex i = rest & (halfLen - 1);
-        TIndex offset = (thread_id - i) * 2 + blockIdx.y * N;
-        TValue *next = next_ptr + offset + i * 2;
-        const TValue *__restrict__ curr = curr_ptr + offset;
-
-        next[0] = curr[i];
-        next[1] = (i + 1 == halfLen) ? curr[len - 1] : curr[halfLen + i] + curr[halfLen + i + 1];
-    }
-}
-
-template <typename TValue, typename TIndex>
-__global__ void computeDctBackward_lasttime_1(const TValue *__restrict__ curr_ptr, TValue *next_ptr, TIndex M, TIndex N, TIndex len, TIndex halfLen)
-{
-    TIndex halfN = (N >> 1);
-    TIndex thread_id = blockIdx.x * blockDim.x + threadIdx.x;
-    if (thread_id < halfN)
-    {
-        TIndex rest = thread_id & (halfN - 1);
-        TIndex i = rest & (halfLen - 1);
-        TIndex offset = (thread_id - i) * 2;
-        TValue *next = next_ptr + blockIdx.y + (offset + i * 2) * M;
-        const TValue *__restrict__ curr = curr_ptr + offset + blockIdx.y * N;
-
-        next[0] = curr[i];
-        next[M] = (i + 1 == halfLen) ? curr[len - 1] : curr[halfLen + i] + curr[halfLen + i + 1];
-    }
-}
-
-#define ROW2COL(IDX, COL, N) ((IDX) * (N) + (COL))
-
-template <typename TValue, typename TIndex>
-__global__ void computeDctForward_2(const TValue *__restrict__ curr, TValue *next, const TValue *cos, TIndex M, TIndex N, TIndex len, TIndex halfLen, TIndex cosOffset)
-{
-    TIndex halfM = (M >> 1);
-    TIndex thread_id = blockIdx.x * blockDim.x + threadIdx.x;
-    if (thread_id < halfM)
-    {
-        TIndex col = blockIdx.y;
-        TIndex rest = thread_id & (halfM - 1);
-        TIndex i = rest & (halfLen - 1);
-        TIndex offset = (thread_id - i) * 2;
-
-        next[ROW2COL(offset + i, col, N)] = curr[ROW2COL(offset + i, col, N)] + curr[ROW2COL(offset + len - i - 1, col, N)];
-        next[ROW2COL(offset + i + halfLen, col, N)] = (curr[ROW2COL(offset + i, col, N)] - curr[ROW2COL(offset + len - i - 1, col, N)]) * cos[cosOffset + i];
-    }
-}
-
-template <typename TValue, typename TIndex>
-__global__ void computeDctBackward_2(const TValue *__restrict__ curr, TValue *next, TIndex M, TIndex N, TIndex len, TIndex halfLen)
-{
-    TIndex halfM = (M >> 1);
-    TIndex thread_id = blockIdx.x * blockDim.x + threadIdx.x;
-    if (thread_id < halfM)
-    {
-        TIndex col = blockIdx.y;
-        TIndex rest = thread_id & (halfM - 1);
-        TIndex i = rest & (halfLen - 1);
-        TIndex offset = (thread_id - i) * 2;
-
-        next[ROW2COL(offset + i * 2, col, N)] = curr[ROW2COL(offset + i, col, N)];
-        next[ROW2COL(offset + i * 2 + 1, col, N)] = (i + 1 == halfLen) ? curr[ROW2COL(offset + len - 1, col, N)] : curr[ROW2COL(offset + halfLen + i, col, N)] + curr[ROW2COL(offset + halfLen + i + 1, col, N)];
-    }
+    return (hid * N + wid);
 }
 
 template <typename T>
-__global__ void normalize(T *x, const T *__restrict__ y, const int M, const int N)
+__global__ void reorderInput(const T *x, T *y, const int M, const int N)
 {
-    int tid = blockDim.x * blockIdx.x + threadIdx.x;
-    if (tid < M * N)
+    const int wid = blockDim.x * blockIdx.x + threadIdx.x;
+    const int hid = blockDim.y * blockIdx.y + threadIdx.y;
+    if (hid < M && wid < N)
     {
-        x[tid] = y[tid] / (M * N) * 4;
-    }
-}
-
-template <typename T>
-__global__ void normalize(T *x, const cufftDoubleComplex *__restrict__ y, const int M, const int N)
-{
-    int tid = blockDim.x * blockIdx.x + threadIdx.x;
-    if (tid < M * N)
-    {
-        x[tid] = y[tid].x / (M * N) * 4;
-    }
-}
-
-template <typename T>
-__global__ void normalize4(T *x, const T * __restrict__ y, const int size, T factor)
-{
-   
-    int tid = blockDim.x * blockIdx.x + threadIdx.x;
-    double4 * tmp_x = (double4*) x;
-    const double4 *  __restrict__ tmp_y = (const double4*) y;
-    tmp_x[tid] = make_double4(tmp_y[tid].x*factor,tmp_y[tid].y*factor,tmp_y[tid].z*factor,tmp_y[tid].w*factor);
-    
-}
-
-/// The implementation of fast Discrete Cosine Transform (DCT) algorithm and its inverse (IDCT) are Lee's algorithms
-/// Algorithm reference: A New Algorithm to Compute the Discrete Cosine Transform, by Byeong Gi Lee, 1984
-///
-/// Lee's algorithm has a recursive structure in nature.
-/// Here is a sample recursive implementation: https://www.nayuki.io/page/fast-discrete-cosine-transform-algorithms
-///
-/// My implementation here is iterative, which is more efficient than the recursive version.
-/// Here is a sample iterative implementation: https://www.codeproject.com/Articles/151043/Iterative-Fast-1D-Forvard-DCT
-
-/// Compute y[k] = sum_n=0..N-1 (x[n] * cos((n + 0.5) * k * PI / N)), for k = 0..N-1
-///
-/// @param  vec   length M * N sequence to be transformed in last dimension
-/// @param  out   length M * N helping buffer, which is also the output
-/// @param  buf   length M * N helping buffer
-/// @param  cos   length N - 1, stores cosine values precomputed by function 'precompute_dct_cos'
-/// @param  M     length of dimension 0 of vec
-/// @param  N     length of dimension 1 of vec, must be power of 2
-template <typename TValue>
-void dct_ref_1(const TValue *vec, TValue *out, TValue *buf, const TValue *cos, int M, int N)
-{
-    dim3 gridSize((N / 2 + TPB - 1) / TPB, M, 1);
-    dim3 blockSize(TPB, 1, 1);
-
-    // Pointers point to the beginning indices of two adjacent iterations
-    TValue *curr = buf;
-    TValue *next = out;
-
-    // 'temp' used to store date of two adjacent iterations
-    // Copy 'vec' to the first N element in 'temp'
-    cudaMemcpy(curr, vec, M * N * sizeof(TValue), cudaMemcpyDeviceToDevice);
-
-    // Current bufferfly length and half length
-    int len = N;
-    int halfLen = len / 2;
-
-    // Iteratively bi-partition sequences into sub-sequences
-    int cosOffset = 0;
-    while (halfLen)
-    {
-        computeDctForward_1<<<gridSize, blockSize>>>(curr, next, cos, N, len, halfLen, cosOffset);
-        cosOffset += halfLen;
-        len = halfLen;
-        halfLen /= 2;
-        swap(curr, next);
-    }
-
-    // Bottom-up form the final DCT solution
-    // Note that the case len = 2 will do nothing, so we start from len = 4
-    len = 4;
-    halfLen = 2;
-    while (halfLen < N)
-    {
-        computeDctBackward_1<<<gridSize, blockSize>>>(curr, next, N, len, halfLen);
-        halfLen = len;
-        len *= 2;
-        swap(curr, next);
-    }
-
-    // Populate the final results into 'out'
-    if (curr != out)
-    {
-        swap(out, buf);
-    }
-}
-
-template <typename TValue>
-void dct_ref_2(const TValue *vec, TValue *out, TValue *buf, const TValue *cos, int M, int N)
-{
-    dim3 gridSize((M / 2 + TPB - 1) / TPB, N, 1);
-    dim3 blockSize(TPB, 1, 1);
-    // int block_count = (N + TPB - 1) / TPB;
-    // int thread_count = TPB;
-
-    // Pointers point to the beginning indices of two adjacent iterations
-    TValue *curr = buf;
-    TValue *next = out;
-
-    // 'temp' used to store date of two adjacent iterations
-    // Copy 'vec' to the first N element in 'temp'
-    cudaMemcpy(curr, vec, M * N * sizeof(TValue), cudaMemcpyDeviceToDevice);
-
-    // Current bufferfly length and half length
-    int len = M;
-    int halfLen = len / 2;
-
-    // Iteratively bi-partition sequences into sub-sequences
-    int cosOffset = 0;
-    while (halfLen)
-    {
-        computeDctForward_2<<<gridSize, blockSize>>>(curr, next, cos, M, N, len, halfLen, cosOffset);
-        cosOffset += halfLen;
-        len = halfLen;
-        halfLen /= 2;
-        swap(curr, next);
-    }
-
-    // Bottom-up form the final DCT solution
-    // Note that the case len = 2 will do nothing, so we start from len = 4
-    len = 4;
-    halfLen = 2;
-    while (halfLen < M)
-    {
-        computeDctBackward_2<<<gridSize, blockSize>>>(curr, next, M, N, len, halfLen);
-        halfLen = len;
-        len *= 2;
-        swap(curr, next);
-    }
-
-    // Populate the final results into 'out'
-    normalize<TValue><<<(N * M + TPB - 1) / TPB, TPB>>>(out, curr, M, N);
-}
-
-template <typename TValue, typename TIndex>
-__global__ __launch_bounds__(1024,10)
-void dct_transpose_kernel(const TValue* __restrict__ vec, TValue *out, const TValue *cos, const int M, const int N)
-{
-    extern __shared__ TValue sdata [];
-    TValue* curr_ptr = sdata;
-    TValue* next_ptr = curr_ptr + N;
-    
-    for (TIndex i = threadIdx.x; i < N ; i += blockDim.x)
-    {
-        curr_ptr[i] = vec[blockIdx.y * N + i];
-    }
-    __syncthreads();
-    
-    // Current bufferfly length and half length    
-    int len = N;
-    int halfLen = len / 2;
-    // Iteratively bi-partition sequences into sub-sequences
-    int cosOffset = 0;
-    
-    const TIndex halfN = halfLen;
-    while (halfLen)
-    {
-        #pragma unroll 4
-        for (TIndex thread_id = threadIdx.x; thread_id < halfN ; thread_id += blockDim.x)
+        int cond = ((hid < M / 2) << 1) | (wid < N / 2);
+        int index;
+        switch(cond)
         {
-            TIndex rest = thread_id & (halfN - 1);
-            TIndex i = rest & (halfLen - 1);
-            TIndex offset = (thread_id - i) * 2;
-            TValue *next = next_ptr + offset + i;
-            TValue *curr = curr_ptr + offset;
-
-            next[0] = curr[i] + curr[len - i - 1];
-            next[halfLen] = (curr[i] - curr[len - i - 1]) * cos[cosOffset + i];
+            case 0: index = INDEX(((M - hid) << 1) - 1, ((N - wid) << 1) - 1, N); break;
+            case 1: index = INDEX(((M - hid) << 1) - 1, wid << 1, N); break;
+            case 2: index = INDEX(hid << 1, ((N - wid) << 1) - 1, N); break;
+            case 3: index = INDEX(hid << 1, wid << 1, N); break;
+            default: assert(0);
         }
-        cosOffset += halfLen;
-        len = halfLen;
-        halfLen /= 2;
-        __syncthreads();
-        swap(curr_ptr, next_ptr);
+        y[INDEX(hid, wid, N)] = x[index];
     }
+}
 
-    // Bottom-up form the final DCT solution
-    // Note that the case len = 2 will do nothing, so we start from len = 4
-    len = 4;
-    halfLen = 2;
-    while (len < N)
-    {
-        #pragma unroll 4
-        for (TIndex thread_id = threadIdx.x; thread_id < halfN ; thread_id += blockDim.x)
-        {
-            TIndex rest = thread_id & (halfN - 1);
-            TIndex i = rest & (halfLen - 1);
-            TIndex offset = (thread_id - i) * 2;
-            TValue *next = next_ptr + offset + i * 2;
-            TValue *curr = curr_ptr + offset;
-            
-            TValue tmp1 = curr[i];
-            TValue tmp2 = (i + 1 == halfLen) ? curr[len - 1] : curr[halfLen + i] + curr[halfLen + i + 1];
+inline __device__ cufftDoubleComplex complexMul(const cufftDoubleComplex &x, const cufftDoubleComplex &y)
+{
+    cufftDoubleComplex res;
+    res.x = x.x * y.x - x.y * y.y;
+    res.y = x.x * y.y + x.y * y.x;
+    return res;
+}
+
+inline __device__ cufftDoubleComplex complexAdd(const cufftDoubleComplex &x, const cufftDoubleComplex &y)
+{
+    cufftDoubleComplex res;
+    res.x = x.x + y.x;
+    res.y = x.y + y.y;
+    return res;
+}
+
+template <typename T>
+__global__ void computeMulExpk(const cufftDoubleComplex *V, T *y, const int M, const int N)
+{
+    const int wid = blockDim.x * blockIdx.x + threadIdx.x;
+    const int hid = blockDim.y * blockIdx.y + threadIdx.y;
+    if (hid < M && wid < N)
+    {   
         
-            *(double2*)next = make_double2(tmp1, tmp2);
-            // next[0] = curr[i];
-            // next[1] = (i + 1 == halfLen) ? curr[len - 1] : curr[halfLen + i] + curr[halfLen + i + 1];
+        cufftDoubleComplex W_h_4M = make_double2(cos(PI * hid / (2 * M)), -1 * sin(PI * hid / (M * 2)));
+        cufftDoubleComplex W_w_4N = make_double2(cos(PI * wid / (2 * N)), -1 * sin(PI * wid / (N * 2)));
+        cufftDoubleComplex W_w_4N_conj = make_double2(W_w_4N.x, -1 * W_w_4N.y);
+
+        cufftDoubleComplex tmp1 = complexMul(W_w_4N, V[INDEX(hid, wid, N)]);
+        if (wid) {
+            cufftDoubleComplex tmp2 = complexMul(W_w_4N_conj, V[INDEX(hid, N - wid, N)]);
+            tmp1 = complexAdd(tmp1, tmp2);
+            tmp1.x/=2;tmp1.y/=2;
         }
-        halfLen = len;
-        len *= 2;
-        __syncthreads();
-        swap(curr_ptr, next_ptr);
-    }
-    #pragma unroll 4
-    for (TIndex thread_id = threadIdx.x; thread_id < halfN ; thread_id += blockDim.x)
-    {
-        TIndex rest = thread_id & (halfN - 1);
-        TIndex i = rest & (halfLen - 1);
-        TIndex offset = (thread_id - i) * 2;
-        TValue *next = out + blockIdx.y + (offset + i * 2) * M;
-        TValue *curr = curr_ptr + offset;
-        
-        next[0] = curr[i];
-        next[M] = (i + 1 == halfLen) ? curr[len - 1] : curr[halfLen + i] + curr[halfLen + i + 1];
-    }
-    __syncthreads();
-}
+        cufftDoubleComplex tmp3 = complexMul(W_h_4M, tmp1);
 
-template <typename TValue, typename TIndex>
-__global__ void dct_transpose_normalize_kernel(const TValue* __restrict__ vec, TValue *out, const TValue *cos, const int M, const int N)
-{
-    extern __shared__ TValue sdata [];
-    TValue* curr_ptr = sdata;
-    TValue* next_ptr = curr_ptr + N;
-    
-    for (TIndex i = threadIdx.x; i < N ; i += blockDim.x)
-    {
-        curr_ptr[i] = vec[blockIdx.y * N + i];
+        y[INDEX(hid, wid, N)] = tmp3.x * 4./ (M * N);
     }
-    __syncthreads();
-    
-    // Current bufferfly length and half length    
-    int len = N;
-    int halfLen = len / 2;
-    // Iteratively bi-partition sequences into sub-sequences
-    int cosOffset = 0;
-    
-    const TIndex halfN = halfLen;
-    while (halfLen)
-    {
-        for (TIndex thread_id = threadIdx.x; thread_id < halfN ; thread_id += blockDim.x)
-        {
-            TIndex rest = thread_id & (halfN - 1);
-            TIndex i = rest & (halfLen - 1);
-            TIndex offset = (thread_id - i) * 2;
-            TValue *next = next_ptr + offset + i;
-            TValue *curr = curr_ptr + offset;
-
-            next[0] = curr[i] + curr[len - i - 1];
-            next[halfLen] = (curr[i] - curr[len - i - 1]) * cos[cosOffset + i];
-        }
-        cosOffset += halfLen;
-        len = halfLen;
-        halfLen /= 2;
-        __syncthreads();
-        swap(curr_ptr, next_ptr);
-    }
-    
-    // Bottom-up form the final DCT solution
-    // Note that the case len = 2 will do nothing, so we start from len = 4
-    len = 4;
-    halfLen = 2;
-    while (len < N)
-    {
-        for (TIndex thread_id = threadIdx.x; thread_id < halfN ; thread_id += blockDim.x)
-        {
-            TIndex rest = thread_id & (halfN - 1);
-            TIndex i = rest & (halfLen - 1);
-            TIndex offset = (thread_id - i) * 2;
-            TValue *next = next_ptr + offset + i * 2;
-            TValue *curr = curr_ptr + offset;
-
-            next[0] = curr[i];
-            next[1] = (i + 1 == halfLen) ? curr[len - 1] : curr[halfLen + i] + curr[halfLen + i + 1];
-        }
-        halfLen = len;
-        len *= 2;
-        __syncthreads();
-        swap(curr_ptr, next_ptr);
-    }
-       
-    for (TIndex thread_id = threadIdx.x; thread_id < halfN ; thread_id += blockDim.x)
-    {
-        TIndex rest = thread_id & (halfN - 1);
-        TIndex i = rest & (halfLen - 1);
-        TIndex offset = (thread_id - i) * 2;
-        TValue *next = out + blockIdx.y + (offset + i * 2) * M;
-        TValue *curr = curr_ptr + offset;
-        
-        next[0] = curr[i] / (M * N) * 4;
-        next[M] = ((i + 1 == halfLen) ? curr[len - 1] : curr[halfLen + i] + curr[halfLen + i + 1]) / (M * N) * 4;
-    }
-    __syncthreads();
-}
-
-template <typename TValue>
-void dct_transpose(const TValue *vec, TValue *out, const TValue *cos, int M, int N)
-{
-    dim3 gridSize(1, M, 1);
-    dim3 blockSize(TPB, 1, 1);
-    size_t shared_memory_size = 2 * N * sizeof(TValue);
-    dct_transpose_kernel<TValue, int><<<gridSize, blockSize, shared_memory_size>>>(vec, out, cos, M, N);
-}
-
-template <typename TValue>
-void dct_transpose_normalize(const TValue *vec, TValue *out, const TValue *cos, int M, int N)
-{
-    dim3 gridSize(1, M, 1);
-    dim3 blockSize(TPB, 1, 1);
-    size_t shared_memory_size = 2 * N * sizeof(TValue);
-    dct_transpose_normalize_kernel<TValue, int><<<gridSize, blockSize, shared_memory_size>>>(vec, out, cos, M, N);
 }
 
 template <typename T>
-__global__ void merge_to_complex(const T* d_x, cufftDoubleComplex * scratch, const int M, const int N)
+__global__ void merge_to_complex(const T *d_x, cufftDoubleComplex *scratch, const int M, const int N)
 {
     const int tid = blockDim.x * blockIdx.x + threadIdx.x;
     const int rid = blockIdx.y;
-    if(tid < N)
+    if (tid < N)
     {
-        scratch[tid].x = d_x[rid*2*N + tid];
-        scratch[tid].y = d_x[rid*2*N + tid + N];
+        scratch[tid].x = d_x[rid * 2 * N + tid];
+        scratch[tid].y = d_x[rid * 2 * N + tid + N];
     }
 }
 
@@ -644,8 +193,8 @@ void dct_1d_z2z(cufftDoubleComplex *d_x,
     int n[1] = {N};
     int BATCH = M / 2;
 
-    cufftPlanMany(&plan, 1, n, 
-                  NULL, 1, N, 
+    cufftPlanMany(&plan, 1, n,
+                  NULL, 1, N,
                   NULL, 1, N,
                   CUFFT_Z2Z, BATCH);
     cufftExecZ2Z(plan, d_x, d_y, CUFFT_FORWARD);
@@ -666,6 +215,32 @@ void dct_2d_d2z(cufftDoubleReal *d_x,
     cufftDestroy(plan);
 }
 
+__global__ void expand_twosides(cufftDoubleComplex *x, cufftDoubleComplex *y, const int M, const int N)
+{
+    const int wid = blockDim.x * blockIdx.x + threadIdx.x;
+    const int hid = blockDim.y * blockIdx.y + threadIdx.y;
+    if(hid < M && wid < N){
+        if (hid == 0) {
+            if(wid <= N / 2){
+                y[wid] = x[wid];
+            } else {
+                cufftDoubleComplex tmp = x[N-wid];
+                tmp.y *= -1;
+                y[wid] = tmp;
+            }
+        } else {
+            if(wid <= N / 2){
+                y[INDEX(hid, wid, N)] = x[INDEX(hid, wid, N / 2 + 1)];
+            }
+            else{
+                cufftDoubleComplex tmp = x[INDEX(M - hid, N - wid, N / 2 + 1)];
+                tmp.y *= -1;
+                y[INDEX(hid, wid, N)] = tmp;
+            }
+        }
+    }
+}
+
 template <typename T>
 void dct_2d_fft(
     const T *h_x,
@@ -683,42 +258,27 @@ void dct_2d_fft(
         assert(0);
     }
 
-
     size_t size = M * N * sizeof(T);
-    cudaMalloc((void **)&d_x, size);
+    checkCUDA(cudaMalloc((void **)&d_x, size));
 
-    cudaMemcpy(d_x, h_x, size, cudaMemcpyHostToDevice);
+    checkCUDA(cudaMemcpy(d_x, h_x, size, cudaMemcpyHostToDevice));
+    dim3 gridSize((N + TPB - 1) / TPB, (M + TPB - 1) / TPB, 1);
+    dim3 blockSize(TPB, TPB, 1);
 
     timer_start = get_globaltime();
-    cudaMalloc((void **)&d_y, size);
-    cudaMalloc((void **)&scratch, size * 2);
+    // checkCUDA(cudaMalloc((void **)&d_y, size));
+    checkCUDA(cudaMalloc((void **)&d_y, size * 2));
+    checkCUDA(cudaMalloc((void **)&scratch, size * 2));
+
+    reorderInput<T><<<gridSize, blockSize>>>(d_x, (T*)scratch, M, N);
     
-    // cudaMemset(scratch, 0, size * 2);
-    // cudaMemcpy2D(scratch, 2 * sizeof(T), d_x, 1*sizeof(T), sizeof(T), M * N, cudaMemcpyDeviceToDevice);
+    cudaDeviceSynchronize();
 
-    dct_2d_d2z<T>(d_x, scratch, M, N);
-    normalize<T><<<(N * M + TPB - 1) / TPB, TPB>>>(d_y, scratch, M, N);
-    // cudaMemcpy2D(d_y, sizeof(cufftDoubleReal), scratch, 2 * sizeof(cufftDoubleReal), sizeof(cufftDoubleReal), M * N, cudaMemcpyDeviceToDevice);
-    // normalize4<T><<<(N * M /4 + TPB - 1) / TPB, TPB>>>(d_y, d_y, M * N / 4, 4. / (M * N));
-    #if 0
-    dct_transpose<T>(d_x, scratch, d_cos0, M, N);
-    dct_transpose<T>(scratch, d_y, d_cos1, N, M);
-    // normalize<T><<<(N * M + TPB - 1) / TPB, TPB>>>(d_y, d_y, M, N);
-    normalize4<T><<<(N * M /4 + TPB - 1) / TPB, TPB>>>(d_y, d_y, M * N / 4, 4. / (M * N));
-    #elif 0
-    dct_transpose<T>(d_x, scratch, d_cos0, M, N);
-    dct_transpose_normalize<T>(scratch, d_y, d_cos1, N, M);
-    #elif 0
-    dct_ref_1<T>(d_x, d_y, scratch, d_cos0, M, N);
-    transpose<T>(d_y, scratch, M, N);
-    dct_ref_1<T>(scratch, d_y, scratch, d_cos1, N, M);
-    transpose<T>(d_y, scratch, N, M);
-    normalize<T><<<(N * M + TPB - 1) / TPB, TPB>>>(d_y, scratch, M, N);
-    #elif 0
-    dct_ref_1<T>(d_x, d_y, scratch, d_cos0, M, N);
-    dct_ref_2<T>(d_y, d_y, scratch, d_cos1, M, N);
-    #endif
+    dct_2d_d2z<T>((T*)scratch, (cufftDoubleComplex *)d_y, M, N);
+    expand_twosides<<<gridSize, blockSize>>>((cufftDoubleComplex *)d_y, scratch, M, N);
+    cudaDeviceSynchronize();
 
+    computeMulExpk<T><<<gridSize, blockSize>>>(scratch, d_y, M, N);
     cudaDeviceSynchronize();
     timer_stop = get_globaltime();
 
@@ -727,6 +287,24 @@ void dct_2d_fft(
     cudaFree(d_x);
     cudaFree(d_y);
     cudaFree(scratch);
+    
+}
+template <typename T>
+int validate_fft(T *result_cuda, T *result_gt, const int M, const int N)
+{
+    for (int i = 0; i < M; ++i)
+    {
+        for (int j = 0; j < N; ++j)
+        {
+            int flag = (std::abs(result_cuda[(i * N + j)<<1] - result_gt[(i * N + j)<<1]) / std::abs(result_gt[(i * N + j)<<1])) < epsilon;
+            if (flag == 0)
+            {
+                // printf("cuda_res[%d][%d]: %f, gt_res[%d][%d]: %f\n", i, j, result_cuda[i*N+j], i, j, result_gt[i*N+j]);
+                return 0;
+            }
+        }
+    }
+    return 1;
 }
 
 template <typename T>
@@ -803,6 +381,41 @@ void load_data(T *&data, T *&result, int &M, int &N)
     printf("[I] data load done.\n");
 }
 
+template <typename T>
+void load_data_fft(T *&data, T *&result, int &M, int &N)
+{
+    std::ifstream input_file("test_2d_fft.dat", std::ios_base::in);
+
+    int i = 0;
+    T val, imag;
+    // int N;
+    // int M;
+    input_file >> M;
+    input_file >> N;
+    printf("M: %d\n", M);
+    printf("N: %d\n", N);
+    data = new T[M * N];
+    while (input_file >> val)
+    {
+        data[i] = val;
+        i++;
+    }
+
+    std::ifstream input_file2("result_2d_fft.dat", std::ios_base::in);
+
+    i = 0;
+    input_file2 >> M;
+    input_file2 >> N;
+    result = new T[M * N * 2];
+    while (input_file2 >> val >> imag)
+    {
+        result[i] = val;
+        result[i+1] = imag;
+        i+=2;
+    }
+    printf("[I] data load done.\n");
+}
+
 typedef double dtype;
 int main()
 {
@@ -812,28 +425,29 @@ int main()
 
     int M, N;
     load_data<dtype>(h_x, h_gt, M, N);
+    // load_data_fft<dtype>(h_x, h_gt, M, N);
     h_y = new dtype[M * N];
+    // h_y = new dtype[M * N * 2];
 
-    for (int i = 0; i < 10; ++i)
-    {
-        printf("%d: %f\n", i, h_x[i]);
-    }
     double total_time = 0;
     for (int i = 0; i < NUM_RUNS; ++i)
     {
         dct_2d_fft<dtype>(h_x, h_y, M, N);
         int flag = validate2D<dtype>(h_y, h_gt, M, N);
-        printf("[I] validation: %d\n", flag);
+        // int flag = validate_fft<dtype>(h_y, h_gt, M ,N);
+        if (!flag)
+        {
+            printf("[I] Error! Results are incorrect.\n", flag);
+            for (int i = 0; i < 4; ++i)
+            {
+                printf("index: %d, result: %f, GT: %f, scale: %f\n", i, h_y[i], h_gt[i], h_y[i] / h_gt[i]);
+            }
+        }
         printf("[D] dct 2D takes %g ms\n", (timer_stop - timer_start) * get_timer_period());
         total_time += i > 0 ? (timer_stop - timer_start) * get_timer_period() : 0;
     }
 
     printf("[D] dct 2D (%d * %d) takes average %g ms\n", M, N, total_time / (NUM_RUNS - 1));
-
-    for (int i = 0; i < 10; ++i)
-    {
-        printf("%d: %f\n", i, h_y[i]);
-    }
 
     delete[] h_x;
     delete[] h_y;
