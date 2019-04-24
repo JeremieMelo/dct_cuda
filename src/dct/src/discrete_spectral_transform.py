@@ -1,3 +1,10 @@
+#!/usr/bin/env python
+# coding=UTF-8
+'''
+@Author: Jake Gu
+@Date: 2019-04-02 16:34:45
+@LastEditTime: 2019-04-23 15:48:08
+'''
 ##
 # @file   discrete_spectral_transform.py
 # @author Yibo Lin

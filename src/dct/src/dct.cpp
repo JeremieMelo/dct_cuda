@@ -1,3 +1,8 @@
+/*
+ * @Author: Jake Gu
+ * @Date: 2019-04-02 16:34:45
+ * @LastEditTime: 2019-04-23 15:46:17
+ */
 /**
  * @file   dct.cpp
  * @author Yibo Lin
