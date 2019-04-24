@@ -3,7 +3,7 @@
 '''
 @Author: Jake Gu
 @Date: 2019-04-15 19:19:32
-@LastEditTime: 2019-04-23 21:17:23
+@LastEditTime: 2019-04-24 17:53:29
 '''
 import torch
 from torch.autograd import Function, Variable
@@ -105,5 +105,5 @@ def fft_2d(test_case="test_2d_fft.dat"):
                 
 
 if __name__ == "__main__":
-    gen_testcase_2d(M=4096,N=4096)
+    gen_testcase_2d(M=512,N=512)
     dct_2d()
