@@ -299,8 +299,8 @@ void dct_2d_fft(
 
     timer_start = get_globaltime();
     // checkCUDA(cudaMalloc((void **)&d_y, size));
-    checkCUDA(cudaMalloc((void **)&d_y, size * 2));
-    checkCUDA(cudaMalloc((void **)&scratch, size * 2));
+    cudaMalloc((void **)&d_y, size * 2);
+    cudaMalloc((void **)&scratch, size * 2);
 
     reorderInput<T><<<gridSize, blockSize>>>(d_x, (T*)scratch, M, N);
     
