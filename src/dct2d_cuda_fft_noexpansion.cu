@@ -65,7 +65,7 @@ inline __device__ int INDEX(const int hid, const int wid, const int N)
 }
 
 template <typename T>
-__global__ void reorderInput(const T *x, T *y, const int M, const int N)
+__global__ void reorderInput_backup(const T *x, T *y, const int M, const int N)
 {
     const int wid = blockDim.x * blockIdx.x + threadIdx.x;
     const int hid = blockDim.y * blockIdx.y + threadIdx.y;
@@ -96,19 +96,23 @@ __global__ void reorderInput(const T *x, T *y, const int M, const int N)
 }
 
 template <typename T>
-__global__ void reorderInput_new(const T *x, T *y, const int M, const int N)
+__global__ void reorderInput(const T *x, T *y, const int M, const int N, const int halfN)
 {
     const int wid = blockDim.x * blockIdx.x + threadIdx.x;
     const int hid = blockDim.y * blockIdx.y + threadIdx.y;
     if (hid < M && wid < N)
     {
         int index;
-        int cond = (((hid & 1) == 0) << 1) | (((wid & 1) == 0) << 1);
+        int cond = (((hid & 1) == 0) << 1) | ((wid & 1) == 0);
         switch(cond){
-            case 0: index = INDEX((2*M-hid-1)/2,(2*N-wid-1)/2,N); break;
-            case 1: index = INDEX((2*M-hid-1)/2, wid/2,N); break;
-            case 2: index = INDEX(hid/2, (2*N-wid-1)/2,N); break;
-            case 3: index = INDEX(hid/2, wid/2,N); break;
+            // case 0: index = INDEX((2*M-hid-1)/2,(2*N-wid-1)/2,N); break;
+            // case 1: index = INDEX((2*M-hid-1)/2, wid/2,N); break;
+            // case 2: index = INDEX(hid/2, (2*N-wid-1)/2,N); break;
+            // case 3: index = INDEX(hid/2, wid/2,N); break;
+            case 0: index = INDEX(2*M-(hid+1),N-(wid+1)/2,halfN); break;
+            case 1: index = INDEX(2*M-(hid+1), wid/2,halfN); break;
+            case 2: index = INDEX(hid, N-(wid+1)/2,halfN); break;
+            case 3: index = INDEX(hid, wid/2,halfN); break;
             default: break;
         }
         y[index] = x[INDEX(hid,wid,N)];
@@ -328,9 +332,9 @@ __global__ __launch_bounds__(512, 10) void computeMulExpk_backup2(const TComplex
 }
 
 template <typename T, typename TComplex>
-__global__ __launch_bounds__(512, 10) void computeMulExpk(const TComplex *V, T *y, const int M, const int N,
-                                                        const int halfM, const int halfN, const T two_over_MN, const T four_over_MN,
-                                                        const TComplex *__restrict__ expkM, const TComplex *__restrict__ expkN)
+__global__ void computeMulExpk(const TComplex *V, T *y, const int M, const int N,
+                               const int halfM, const int halfN, const T two_over_MN, const T four_over_MN,
+                               const TComplex *__restrict__ expkM, const TComplex *__restrict__ expkN)
 {
     const int wid = blockDim.x * blockIdx.x + threadIdx.x;
     const int hid = blockDim.y * blockIdx.y + threadIdx.y;
@@ -341,11 +345,12 @@ __global__ __launch_bounds__(512, 10) void computeMulExpk(const TComplex *V, T *
         switch (cond)
         {
         case 0:
-            y[0] = RealPartOfMul(expkN[0], V[0]) * four_over_MN;
+            y[0] = V[0].x * four_over_MN;
             y[halfN] = RealPartOfMul(expkN[halfN], V[halfN]) * four_over_MN;
-            y[INDEX(halfM, 0, N)] = expkM[halfM].x * RealPartOfMul(expkN[0], V[INDEX(halfM, 0, halfN + 1)]) * four_over_MN;            
+            y[INDEX(halfM, 0, N)] = expkM[halfM].x * V[INDEX(halfM, 0, halfN + 1)].x * four_over_MN;            
             y[INDEX(halfM, halfN, N)] = expkM[halfM].x * RealPartOfMul(expkN[halfN], V[INDEX(halfM, halfN, halfN + 1)]) * four_over_MN;
             break;
+
         case 1:
             y[wid] = RealPartOfMul(expkN[wid], V[wid]) * four_over_MN;
             y[N - wid] = -1 * ImaginaryPartOfMul(expkN[wid], V[wid]) * four_over_MN;
@@ -354,15 +359,14 @@ __global__ __launch_bounds__(512, 10) void computeMulExpk(const TComplex *V, T *
             y[INDEX(halfM, wid, N)] = expkM[halfM].x * RealPartOfMul(expkN[wid], tmp1) * four_over_MN;         
             y[INDEX(halfM, N - wid, N)] = -1 * expkM[halfM].x * ImaginaryPartOfMul(expkN[wid], tmp1) * four_over_MN;
             break;
+
         case 2:
             tmp1 = V[INDEX(hid, 0, halfN + 1)];
             tmp2 = V[INDEX(M - hid, 0, halfN + 1)];
             tmp_up.x = expkM[hid].x * (tmp1.x + tmp2.x) + expkM[hid].y * (tmp2.y - tmp1.y);
-            tmp_up.y = expkM[hid].x * (tmp1.y + tmp2.y) + expkM[hid].y * (tmp1.x - tmp2.x);
             tmp_down.x = -1 * expkM[hid].y * (tmp1.x + tmp2.x) + expkM[hid].x * (tmp2.y - tmp1.y);
-            tmp_down.y = -1 * expkM[hid].y * (tmp1.y + tmp2.y) + expkM[hid].x * (tmp1.x - tmp2.x);
-            y[INDEX(hid, 0, N)] = RealPartOfMul(expkN[0], tmp_up) * two_over_MN;
-            y[INDEX(M - hid, 0, N)] = RealPartOfMul(expkN[0], tmp_down) * two_over_MN;
+            y[INDEX(hid, 0, N)] = tmp_up.x * two_over_MN;
+            y[INDEX(M - hid, 0, N)] = tmp_down.x * two_over_MN;
 
             tmp1 = V[INDEX(hid, halfN, halfN + 1)];
             tmp2 = V[INDEX(M - hid, halfN, halfN + 1)];
@@ -373,6 +377,7 @@ __global__ __launch_bounds__(512, 10) void computeMulExpk(const TComplex *V, T *
             y[INDEX(hid, halfN, N)] = RealPartOfMul(expkN[halfN], tmp_up) * two_over_MN;
             y[INDEX(M - hid, halfN, N)] = RealPartOfMul(expkN[halfN], tmp_down) * two_over_MN;
             break;
+
         case 3:
             tmp1 = V[INDEX(hid, wid, halfN + 1)];
             tmp2 = V[INDEX(M - hid, wid, halfN + 1)];
@@ -385,6 +390,7 @@ __global__ __launch_bounds__(512, 10) void computeMulExpk(const TComplex *V, T *
             y[INDEX(hid, N - wid, N)] = -1 * ImaginaryPartOfMul(expkN[wid], tmp_up) * two_over_MN;
             y[INDEX(M - hid, N - wid, N)] = -1 * ImaginaryPartOfMul(expkN[wid], tmp_down) * two_over_MN;
             break;
+
         default:
             assert(0);
             break;
@@ -514,7 +520,7 @@ void dct_2d_fft(const T *h_x, T *h_y, const int M, const int N)
     cudaDeviceSynchronize();
 
     timer_start = get_globaltime();
-    reorderInput<T><<<gridSize, blockSize>>>(d_x, d_y, M, N);
+    reorderInput<T><<<gridSize, blockSize>>>(d_x, d_y, M, N, N/2);
     cudaDeviceSynchronize();
     
     fft2D(d_y, scratch, M, N, plan);
