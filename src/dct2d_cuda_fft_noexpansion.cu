@@ -11,9 +11,9 @@
 
 #define PI (3.141592653589793238462643383279502884197169399375105820974944592307816406286208998628034825342117067982148086513282306647093844609550582231725359408128481)
 #define TPB (16)
-#define NUM_RUNS (5)
+#define NUM_RUNS (101)
 
-#if 1
+#if 0
 typedef float dtype;
 typedef cufftReal dtypeReal;
 typedef cufftComplex dtypeComplex;
@@ -92,6 +92,26 @@ __global__ void reorderInput(const T *x, T *y, const int M, const int N)
             break;
         }
         y[INDEX(hid, wid, N)] = x[index];
+    }
+}
+
+template <typename T>
+__global__ void reorderInput_new(const T *x, T *y, const int M, const int N)
+{
+    const int wid = blockDim.x * blockIdx.x + threadIdx.x;
+    const int hid = blockDim.y * blockIdx.y + threadIdx.y;
+    if (hid < M && wid < N)
+    {
+        int index;
+        int cond = (((hid & 1) == 0) << 1) | (((wid & 1) == 0) << 1);
+        switch(cond){
+            case 0: index = INDEX((2*M-hid-1)/2,(2*N-wid-1)/2,N); break;
+            case 1: index = INDEX((2*M-hid-1)/2, wid/2,N); break;
+            case 2: index = INDEX(hid/2, (2*N-wid-1)/2,N); break;
+            case 3: index = INDEX(hid/2, wid/2,N); break;
+            default: break;
+        }
+        y[index] = x[INDEX(hid,wid,N)];
     }
 }
 
@@ -243,7 +263,7 @@ __global__ __launch_bounds__(512, 10) void computeMulExpk_backup(const TComplex 
 
 template <typename T, typename TComplex>
 __global__ __launch_bounds__(512, 10) void computeMulExpk_backup2(const TComplex *V, T *y, const int M, const int N, 
-                                            const int halfN, const T two_over_MN, const T four_over_MN, 
+                                            const int halfM, const int halfN, const T two_over_MN, const T four_over_MN, 
                                             const TComplex *__restrict__ expkM, const TComplex *__restrict__ expkN)
 {
     const int wid = blockDim.x * blockIdx.x + threadIdx.x;
@@ -308,44 +328,31 @@ __global__ __launch_bounds__(512, 10) void computeMulExpk_backup2(const TComplex
 }
 
 template <typename T, typename TComplex>
-__global__ __launch_bounds__(512, 10) void computeMulExpk(const TComplex *V, T *y, const int M, const int N, const int halfM,
-                                                          const int halfN, const T two_over_MN, const T four_over_MN,
-                                                          const TComplex *__restrict__ expkM, const TComplex *__restrict__ expkN)
+__global__ __launch_bounds__(512, 10) void computeMulExpk(const TComplex *V, T *y, const int M, const int N,
+                                                        const int halfM, const int halfN, const T two_over_MN, const T four_over_MN,
+                                                        const TComplex *__restrict__ expkM, const TComplex *__restrict__ expkN)
 {
     const int wid = blockDim.x * blockIdx.x + threadIdx.x;
     const int hid = blockDim.y * blockIdx.y + threadIdx.y;
     if (hid < halfM && wid < halfN)
     {
         int cond = ((hid != 0) << 1) | (wid != 0);
-        TComplex tmp, tmp1, tmp2, tmp_up, tmp_down;
+        TComplex tmp1, tmp2, tmp_up, tmp_down;
         switch (cond)
         {
         case 0:
             y[0] = RealPartOfMul(expkN[0], V[0]) * four_over_MN;
-
-            tmp1 = V[INDEX(halfM, 0, halfN + 1)];
-            tmp.x = expkM[halfM].x * tmp1.x;
-            tmp.y = expkM[halfM].x * tmp1.y;
-            y[INDEX(halfM, 0, N)] = RealPartOfMul(expkN[0], tmp) * four_over_MN;
-
             y[halfN] = RealPartOfMul(expkN[halfN], V[halfN]) * four_over_MN;
-
-            tmp1 = V[INDEX(halfM, halfN, halfN + 1)];
-            tmp.x = expkM[halfM].x * tmp1.x;
-            tmp.y = expkM[halfM].x * tmp1.y;
-            y[INDEX(halfM, halfN, N)] = RealPartOfMul(expkN[halfN], tmp) * four_over_MN;
+            y[INDEX(halfM, 0, N)] = expkM[halfM].x * RealPartOfMul(expkN[0], V[INDEX(halfM, 0, halfN + 1)]) * four_over_MN;            
+            y[INDEX(halfM, halfN, N)] = expkM[halfM].x * RealPartOfMul(expkN[halfN], V[INDEX(halfM, halfN, halfN + 1)]) * four_over_MN;
             break;
         case 1:
             y[wid] = RealPartOfMul(expkN[wid], V[wid]) * four_over_MN;
+            y[N - wid] = -1 * ImaginaryPartOfMul(expkN[wid], V[wid]) * four_over_MN;
 
             tmp1 = V[INDEX(halfM, wid, halfN + 1)];
-            tmp.x = expkM[halfM].x * tmp1.x;
-            tmp.y = expkM[halfM].x * tmp1.y;
-            y[INDEX(halfM, wid, N)] = RealPartOfMul(expkN[wid], tmp) * four_over_MN;
-
-            y[N - wid] = RealPartOfMul(expkN[N - wid], complexConj(V[wid])) * four_over_MN;
-
-            y[INDEX(halfM, N - wid, N)] = -1 * ImaginaryPartOfMul(expkN[wid], tmp) * four_over_MN;
+            y[INDEX(halfM, wid, N)] = expkM[halfM].x * RealPartOfMul(expkN[wid], tmp1) * four_over_MN;         
+            y[INDEX(halfM, N - wid, N)] = -1 * expkM[halfM].x * ImaginaryPartOfMul(expkN[wid], tmp1) * four_over_MN;
             break;
         case 2:
             tmp1 = V[INDEX(hid, 0, halfN + 1)];
@@ -377,7 +384,6 @@ __global__ __launch_bounds__(512, 10) void computeMulExpk(const TComplex *V, T *
             y[INDEX(M - hid, wid, N)] = RealPartOfMul(expkN[wid], tmp_down) * two_over_MN;
             y[INDEX(hid, N - wid, N)] = -1 * ImaginaryPartOfMul(expkN[wid], tmp_up) * two_over_MN;
             y[INDEX(M - hid, N - wid, N)] = -1 * ImaginaryPartOfMul(expkN[wid], tmp_down) * two_over_MN;
-
             break;
         default:
             assert(0);
