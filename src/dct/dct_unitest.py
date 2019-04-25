@@ -3,7 +3,7 @@
 '''
 @Author: Jake Gu
 @Date: 2019-04-13 19:59:17
-@LastEditTime: 2019-04-23 21:21:46
+@LastEditTime: 2019-04-24 20:28:17
 '''
 ##
 # @file   dct_unitest.py
@@ -446,16 +446,25 @@ def eval_runtime():
 
     N = 4096
     runs = 10
-    x = torch.empty(10, N, N, dtype=torch.float64).uniform_(0, 10.0).cuda()
-    perm = discrete_spectral_transform.get_perm(N, dtype=torch.int64, device=x.device)
-    expk = discrete_spectral_transform.get_expk(N, dtype=x.dtype, device=x.device)
+    # x = torch.empty(10, N, N, dtype=torch.float64).uniform_(0, 10.0).cuda()
+    with open("../test_2d.dat", "r") as f:
+        lines = f.readlines()
+        M = int(lines[0].strip())
+        N = int(lines[1].strip())
+        x = np.resize(np.array([float(i)
+                                for i in lines[2:]]).astype(np.float64), [M, N])
+        x = torch.Tensor(x).cuda()
+    perm0 = discrete_spectral_transform.get_perm(M, dtype=torch.int64, device=x.device)
+    expk0 = discrete_spectral_transform.get_expk(M, dtype=x.dtype, device=x.device)
+    perm1 = discrete_spectral_transform.get_perm(N, dtype=torch.int64, device=x.device)
+    expk1 = discrete_spectral_transform.get_expk(N, dtype=x.dtype, device=x.device)
 
-    print("N = {}".format(N))
+    print("M = {}, N = {}".format(M, N))
 
     x_numpy = x.data.cpu().numpy()
     tt = time.time()
     for i in range(runs):
-       y = fftpack.dct(fftpack.dct(x_numpy[0].T, norm=None).T/N, norm=None)/N
+       y = fftpack.dct(fftpack.dct(x_numpy.T, norm=None).T/N, norm=None)/M
     print("CPU: scipy.fftpack.dct2d takes %f ms" % ((time.time()-tt)/runs*1000))
 
     # 9s for 200 iterations 1024x1024 on GTX 1080
@@ -463,7 +472,7 @@ def eval_runtime():
     tt = time.time()
     #with torch.autograd.profiler.profile(use_cuda=True) as prof:
     for i in range(runs):
-       y_2N = discrete_spectral_transform.dct2_2N(x[0], expk0=expk, expk1=expk)
+       y_2N = discrete_spectral_transform.dct2_2N(x, expk0=expk0, expk1=expk1)
     torch.cuda.synchronize()
     #print(prof)
     print("Pytorch: dct2d_2N takes %.5f ms" % ((time.time()-tt)/runs*1000))
@@ -473,11 +482,12 @@ def eval_runtime():
     tt = time.time()
     #with torch.autograd.profiler.profile(use_cuda=True) as prof:
     for i in range(runs):
-       y_N = discrete_spectral_transform.dct2_N(x[0], perm0=perm, expk0=expk, perm1=perm, expk1=expk)
+       y_N = discrete_spectral_transform.dct2_N(x, perm0=perm0, expk0=expk0, perm1=perm1, expk1=expk1)
     torch.cuda.synchronize()
+    print(y_N)
     #print(prof)
     print("Pytorch: dct2d_N takes %.5f ms" % ((time.time()-tt)/runs*1000))
-
+    exit(1)
     dct2func = dct.DCT2(expk, expk, algorithm='2N')
     torch.cuda.synchronize()
     tt = time.time()
