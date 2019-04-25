@@ -121,6 +121,16 @@ inline __device__ float RealPartOfMul(const cufftComplex &x, const cufftComplex 
     return x.x * y.x - x.y * y.y;
 }
 
+inline __device__ cufftDoubleReal ImaginaryPartOfMul(const cufftDoubleComplex &x, const cufftDoubleComplex &y)
+{
+    return x.x * y.y + x.y * y.x;
+}
+
+inline __device__ float ImaginaryPartOfMul(const cufftComplex &x, const cufftComplex &y)
+{
+    return x.x * y.y + x.y * y.x;
+}
+
 inline __device__ cufftDoubleComplex complexAdd(const cufftDoubleComplex &x, const cufftDoubleComplex &y)
 {
     cufftDoubleComplex res;
@@ -232,7 +242,7 @@ __global__ __launch_bounds__(512, 10) void computeMulExpk_backup(const TComplex 
 }
 
 template <typename T, typename TComplex>
-__global__ __launch_bounds__(512, 10) void computeMulExpk(const TComplex *V, T *y, const int M, const int N, 
+__global__ __launch_bounds__(512, 10) void computeMulExpk_backup2(const TComplex *V, T *y, const int M, const int N, 
                                             const int halfN, const T two_over_MN, const T four_over_MN, 
                                             const TComplex *__restrict__ expkM, const TComplex *__restrict__ expkN)
 {
@@ -293,6 +303,85 @@ __global__ __launch_bounds__(512, 10) void computeMulExpk(const TComplex *V, T *
             }
             y[INDEX(hid, wid, N)] = RealPartOfMul(expkN[wid], tmp_up) * two_over_MN;
             y[INDEX(M-hid, wid, N)] = RealPartOfMul(expkN[wid], tmp_down) * two_over_MN;
+        }
+    }
+}
+
+template <typename T, typename TComplex>
+__global__ __launch_bounds__(512, 10) void computeMulExpk(const TComplex *V, T *y, const int M, const int N, const int halfM,
+                                                          const int halfN, const T two_over_MN, const T four_over_MN,
+                                                          const TComplex *__restrict__ expkM, const TComplex *__restrict__ expkN)
+{
+    const int wid = blockDim.x * blockIdx.x + threadIdx.x;
+    const int hid = blockDim.y * blockIdx.y + threadIdx.y;
+    if (hid < halfM && wid < halfN)
+    {
+        int cond = ((hid != 0) << 1) | (wid != 0);
+        TComplex tmp, tmp1, tmp2, tmp_up, tmp_down;
+        switch (cond)
+        {
+        case 0:
+            y[0] = RealPartOfMul(expkN[0], V[0]) * four_over_MN;
+
+            tmp1 = V[INDEX(halfM, 0, halfN + 1)];
+            tmp.x = expkM[halfM].x * tmp1.x;
+            tmp.y = expkM[halfM].x * tmp1.y;
+            y[INDEX(halfM, 0, N)] = RealPartOfMul(expkN[0], tmp) * four_over_MN;
+
+            y[halfN] = RealPartOfMul(expkN[halfN], V[halfN]) * four_over_MN;
+
+            tmp1 = V[INDEX(halfM, halfN, halfN + 1)];
+            tmp.x = expkM[halfM].x * tmp1.x;
+            tmp.y = expkM[halfM].x * tmp1.y;
+            y[INDEX(halfM, halfN, N)] = RealPartOfMul(expkN[halfN], tmp) * four_over_MN;
+            break;
+        case 1:
+            y[wid] = RealPartOfMul(expkN[wid], V[wid]) * four_over_MN;
+
+            tmp1 = V[INDEX(halfM, wid, halfN + 1)];
+            tmp.x = expkM[halfM].x * tmp1.x;
+            tmp.y = expkM[halfM].x * tmp1.y;
+            y[INDEX(halfM, wid, N)] = RealPartOfMul(expkN[wid], tmp) * four_over_MN;
+
+            y[N - wid] = RealPartOfMul(expkN[N - wid], complexConj(V[wid])) * four_over_MN;
+
+            y[INDEX(halfM, N - wid, N)] = -1 * ImaginaryPartOfMul(expkN[wid], tmp) * four_over_MN;
+            break;
+        case 2:
+            tmp1 = V[INDEX(hid, 0, halfN + 1)];
+            tmp2 = V[INDEX(M - hid, 0, halfN + 1)];
+            tmp_up.x = expkM[hid].x * (tmp1.x + tmp2.x) + expkM[hid].y * (tmp2.y - tmp1.y);
+            tmp_up.y = expkM[hid].x * (tmp1.y + tmp2.y) + expkM[hid].y * (tmp1.x - tmp2.x);
+            tmp_down.x = -1 * expkM[hid].y * (tmp1.x + tmp2.x) + expkM[hid].x * (tmp2.y - tmp1.y);
+            tmp_down.y = -1 * expkM[hid].y * (tmp1.y + tmp2.y) + expkM[hid].x * (tmp1.x - tmp2.x);
+            y[INDEX(hid, 0, N)] = RealPartOfMul(expkN[0], tmp_up) * two_over_MN;
+            y[INDEX(M - hid, 0, N)] = RealPartOfMul(expkN[0], tmp_down) * two_over_MN;
+
+            tmp1 = V[INDEX(hid, halfN, halfN + 1)];
+            tmp2 = V[INDEX(M - hid, halfN, halfN + 1)];
+            tmp_up.x = expkM[hid].x * (tmp1.x + tmp2.x) + expkM[hid].y * (tmp2.y - tmp1.y);
+            tmp_up.y = expkM[hid].x * (tmp1.y + tmp2.y) + expkM[hid].y * (tmp1.x - tmp2.x);
+            tmp_down.x = -1 * expkM[hid].y * (tmp1.x + tmp2.x) + expkM[hid].x * (tmp2.y - tmp1.y);
+            tmp_down.y = -1 * expkM[hid].y * (tmp1.y + tmp2.y) + expkM[hid].x * (tmp1.x - tmp2.x);
+            y[INDEX(hid, halfN, N)] = RealPartOfMul(expkN[halfN], tmp_up) * two_over_MN;
+            y[INDEX(M - hid, halfN, N)] = RealPartOfMul(expkN[halfN], tmp_down) * two_over_MN;
+            break;
+        case 3:
+            tmp1 = V[INDEX(hid, wid, halfN + 1)];
+            tmp2 = V[INDEX(M - hid, wid, halfN + 1)];
+            tmp_up.x = expkM[hid].x * (tmp1.x + tmp2.x) + expkM[hid].y * (tmp2.y - tmp1.y);
+            tmp_up.y = expkM[hid].x * (tmp1.y + tmp2.y) + expkM[hid].y * (tmp1.x - tmp2.x);
+            tmp_down.x = -1 * expkM[hid].y * (tmp1.x + tmp2.x) + expkM[hid].x * (tmp2.y - tmp1.y);
+            tmp_down.y = -1 * expkM[hid].y * (tmp1.y + tmp2.y) + expkM[hid].x * (tmp1.x - tmp2.x);
+            y[INDEX(hid, wid, N)] = RealPartOfMul(expkN[wid], tmp_up) * two_over_MN;
+            y[INDEX(M - hid, wid, N)] = RealPartOfMul(expkN[wid], tmp_down) * two_over_MN;
+            y[INDEX(hid, N - wid, N)] = -1 * ImaginaryPartOfMul(expkN[wid], tmp_up) * two_over_MN;
+            y[INDEX(M - hid, N - wid, N)] = -1 * ImaginaryPartOfMul(expkN[wid], tmp_down) * two_over_MN;
+
+            break;
+        default:
+            assert(0);
+            break;
         }
     }
 }
@@ -413,7 +502,7 @@ void dct_2d_fft(const T *h_x, T *h_y, const int M, const int N)
     makeCufftPlan(scratch, M, N, &plan);
 
     dim3 gridSize((N + TPB - 1) / TPB, (M + TPB - 1) / TPB, 1);
-    dim3 gridSize2((N + TPB - 1) / TPB, (M/2 + TPB - 1) / TPB, 1);
+    dim3 gridSize2((N/2 + TPB - 1) / TPB, (M/2 + TPB - 1) / TPB, 1);
     dim3 blockSize(TPB, TPB, 1);
     precomputeExpk<<<(std::max(M, N) + 1023) / 1024, 1024>>>(expkM, expkN, M, N);
     cudaDeviceSynchronize();
@@ -424,7 +513,7 @@ void dct_2d_fft(const T *h_x, T *h_y, const int M, const int N)
     
     fft2D(d_y, scratch, M, N, plan);
     
-    computeMulExpk<T, TComplex><<<gridSize2, blockSize>>>(scratch, d_y, M, N, N / 2, 2. / (M * N), 4. / (M * N), expkM, expkN);
+    computeMulExpk<T, TComplex><<<gridSize2, blockSize>>>(scratch, d_y, M, N, M / 2, N / 2, 2. / (M * N), 4. / (M * N), expkM, expkN);
     cudaDeviceSynchronize();
     timer_stop = get_globaltime();
 
@@ -463,7 +552,13 @@ int validate2D(T *result_cuda, T *result_gt, const int M, const int N)
     {
         for (int j = 0; j < N; ++j)
         {
-            int flag = (std::abs(result_cuda[i * N + j] - result_gt[i * N + j]) / std::abs(result_gt[i * N + j])) < epsilon;
+            int flag;
+            if(std::abs(result_gt[i * N + j]) < 1e-6){
+                flag = (std::abs(result_cuda[i * N + j] - result_gt[i * N + j])) < epsilon/100.;
+            }
+            else{
+                flag = (std::abs(result_cuda[i * N + j] - result_gt[i * N + j]) / std::abs(result_gt[i * N + j])) < epsilon;
+            }
             if (flag == 0)
             {
                 printf("cuda_res[%d][%d]: %f, gt_res[%d][%d]: %f\n", i, j, result_cuda[i*N+j], i, j, result_gt[i*N+j]);
