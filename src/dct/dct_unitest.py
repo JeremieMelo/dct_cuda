@@ -445,7 +445,7 @@ def eval_runtime():
     # print(dct_N(x))
 
     N = 4096
-    runs = 10
+    runs = 1
     # x = torch.empty(10, N, N, dtype=torch.float64).uniform_(0, 10.0).cuda()
     with open("../test_2d.dat", "r") as f:
         lines = f.readlines()
@@ -453,14 +453,14 @@ def eval_runtime():
         N = int(lines[1].strip())
         x = np.resize(np.array([float(i)
                                 for i in lines[2:]]).astype(np.float64), [M, N])
-        x = torch.Tensor(x).cuda()
+        x = torch.Tensor(x).to(torch.float64).cuda()
     perm0 = discrete_spectral_transform.get_perm(M, dtype=torch.int64, device=x.device)
     expk0 = discrete_spectral_transform.get_expk(M, dtype=x.dtype, device=x.device)
     perm1 = discrete_spectral_transform.get_perm(N, dtype=torch.int64, device=x.device)
     expk1 = discrete_spectral_transform.get_expk(N, dtype=x.dtype, device=x.device)
 
     print("M = {}, N = {}".format(M, N))
-
+    '''
     x_numpy = x.data.cpu().numpy()
     tt = time.time()
     for i in range(runs):
@@ -484,36 +484,36 @@ def eval_runtime():
     for i in range(runs):
        y_N = discrete_spectral_transform.dct2_N(x, perm0=perm0, expk0=expk0, perm1=perm1, expk1=expk1)
     torch.cuda.synchronize()
-    print(y_N)
     #print(prof)
     print("Pytorch: dct2d_N takes %.5f ms" % ((time.time()-tt)/runs*1000))
-    exit(1)
-    dct2func = dct.DCT2(expk, expk, algorithm='2N')
+
+    dct2func = dct.DCT2(expk0, expk1, algorithm='2N')
     torch.cuda.synchronize()
     tt = time.time()
     #with torch.autograd.profiler.profile(use_cuda=True) as prof:
     for i in range(runs):
-       y_2N = dct2func.forward(x[0])
+       y_2N = dct2func.forward(x)
     torch.cuda.synchronize()
     #print(prof)
     print("CUDA: DCT2d_2N Function takes %.5f ms" % ((time.time()-tt)/runs*1000))
-
-    dct2func = dct.DCT2(expk, expk, algorithm='N')
+    '''
+    dct2func = dct.DCT2(expk0, expk1, algorithm='N')
     torch.cuda.synchronize()
     tt = time.time()
     #with torch.autograd.profiler.profile(use_cuda=True) as prof:
-    for i in range(runs):
-       y_N = dct2func.forward(x[0])
+    # for i in range(runs):
+    y_N = dct2func.forward(x)
     torch.cuda.synchronize()
     #print(prof)
     print("CUDA: DCT2d_N Function takes %.5f ms" % ((time.time()-tt)/runs*1000))
+    exit()
 
-    dct2func = dct_lee.DCT2(expk, expk)
+    dct2func = dct_lee.DCT2(expk0, expk1)
     torch.cuda.synchronize()
     tt = time.time()
     #with torch.autograd.profiler.profile(use_cuda=True) as prof:
     for i in range(runs):
-       y_N = dct2func.forward(x[0])
+       y_N = dct2func.forward(x)
     torch.cuda.synchronize()
     #print(prof)
     print("CUDA: DCT2d_Lee Function takes %.5f ms" % ((time.time()-tt)/runs*1000))

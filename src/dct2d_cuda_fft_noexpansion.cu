@@ -363,24 +363,28 @@ __global__ __launch_bounds__(512, 2) void computeMulExpk_shared(const TComplex *
     }
 }
 
-template <typename T>
-void fft2D(T *d_x, cufftDoubleComplex *d_y, const int M, const int N)
+void makeCufftPlan(cufftComplex *Ptr, const int M, const int N, cufftHandle *plan)
 {
-    cufftHandle plan;
-    cufftPlan2d(&plan, M, N, CUFFT_D2Z);
-    cufftExecD2Z(plan, (cufftDoubleReal *)d_x, d_y);
-    cudaDeviceSynchronize();
-    cufftDestroy(plan);
+    cufftPlan2d(plan, M, N, CUFFT_R2C);
+}
+
+void makeCufftPlan(cufftDoubleComplex *Ptr, const int M, const int N, cufftHandle *plan)
+{
+    cufftPlan2d(plan, M, N, CUFFT_D2Z);
 }
 
 template <typename T>
-void fft2D(T *d_x, cufftComplex *d_y, const int M, const int N)
+void fft2D(T *d_x, cufftDoubleComplex *d_y, const int M, const int N, cufftHandle &plan)
 {
-    cufftHandle plan;
-    cufftPlan2d(&plan, M, N, CUFFT_R2C);
+    cufftExecD2Z(plan, (cufftDoubleReal *)d_x, d_y);
+    cudaDeviceSynchronize();
+}
+
+template <typename T>
+void fft2D(T *d_x, cufftComplex *d_y, const int M, const int N, cufftHandle &plan)
+{
     cufftExecR2C(plan, (cufftReal *)d_x, d_y);
     cudaDeviceSynchronize();
-    cufftDestroy(plan);
 }
 
 template <typename T, typename TDouble = cufftDoubleReal, typename TComplex = cufftDoubleComplex>
@@ -399,10 +403,15 @@ void dct_2d_fft(const T *h_x, T *h_y, const int M, const int N)
 
     size_t size = M * N * sizeof(T);
     checkCUDA(cudaMalloc((void **)&d_x, size));
+    checkCUDA(cudaMalloc((void **)&d_y, size));
     checkCUDA(cudaMalloc((void **)&expkM, M * sizeof(TComplex)));
     checkCUDA(cudaMalloc((void **)&expkN, N * sizeof(TComplex)));
-
+    checkCUDA(cudaMalloc((void **)&scratch, M * (N / 2 + 1) * sizeof(TComplex)));
     checkCUDA(cudaMemcpy(d_x, h_x, size, cudaMemcpyHostToDevice));
+
+    cufftHandle plan;
+    makeCufftPlan(scratch, M, N, &plan);
+
     dim3 gridSize((N + TPB - 1) / TPB, (M + TPB - 1) / TPB, 1);
     dim3 gridSize2((N + TPB - 1) / TPB, (M/2 + TPB - 1) / TPB, 1);
     dim3 blockSize(TPB, TPB, 1);
@@ -410,14 +419,11 @@ void dct_2d_fft(const T *h_x, T *h_y, const int M, const int N)
     cudaDeviceSynchronize();
 
     timer_start = get_globaltime();
-    cudaMalloc((void **)&d_y, size);
-    cudaMalloc((void **)&scratch, M * (N / 2 + 1) * sizeof(TComplex));
-
     reorderInput<T><<<gridSize, blockSize>>>(d_x, d_y, M, N);
     cudaDeviceSynchronize();
-
-    fft2D(d_y, scratch, M, N);
-
+    
+    fft2D(d_y, scratch, M, N, plan);
+    
     computeMulExpk<T, TComplex><<<gridSize2, blockSize>>>(scratch, d_y, M, N, N / 2, 2. / (M * N), 4. / (M * N), expkM, expkN);
     cudaDeviceSynchronize();
     timer_stop = get_globaltime();
@@ -429,6 +435,7 @@ void dct_2d_fft(const T *h_x, T *h_y, const int M, const int N)
     cudaFree(scratch);
     cudaFree(expkM);
     cudaFree(expkN);
+    cufftDestroy(plan);
 }
 
 template <typename T>
