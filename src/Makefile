@@ -30,5 +30,9 @@ dct2d_cuda_fft_noexp: dct2d_cuda_fft_noexpansion.cu
 	mkdir -p bin
 	nvcc -w $(ARCH) $(OPTIONS) -prec-div=false -ftz=true -o bin/dct2d_cuda_fft_noexp dct2d_cuda_fft_noexpansion.cu
 
+idct2d_cuda_fft: idct2d_cuda_fft.cu
+	mkdir -p bin
+	nvcc -w $(ARCH) $(OPTIONS) -o bin/idct2d_cuda_fft idct2d_cuda_fft.cu
+
 clean:
 	rm -rf bin lib

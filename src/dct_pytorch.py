@@ -74,6 +74,7 @@ def dct_2d(test_case="test_2d.dat"):
         for i in range(M*N):
             f.write("{}\n".format(y[i]))
 
+
 def fft_2d(test_case="test_2d_fft.dat"):
     runs = 2
     with open(test_case, "r") as f:
@@ -82,12 +83,12 @@ def fft_2d(test_case="test_2d_fft.dat"):
         N = int(lines[1].strip())
         x = np.resize(np.array([float(i)
                                 for i in lines[2:]]).astype(np.float64), [M, N])
-    
+
     x_r = np.zeros_like(x)
-    x_r[0:M//2,0:N//2] = x[0:M:2, 0:N:2]
-    x_r[M//2:,0:N//2] = x[M:0:-2, 0:N:2]
-    x_r[0:M//2,N//2:] = x[0:M:2, N:0:-2]    
-    x_r[M//2:,N//2:] = x[M:0:-2, N:0:-2]
+    x_r[0:M//2, 0:N//2] = x[0:M:2, 0:N:2]
+    x_r[M//2:, 0:N//2] = x[M:0:-2, 0:N:2]
+    x_r[0:M//2, N//2:] = x[0:M:2, N:0:-2]
+    x_r[M//2:, N//2:] = x[M:0:-2, N:0:-2]
     print(x)
     print(x_r)
     tt = time.time()
@@ -102,8 +103,8 @@ def fft_2d(test_case="test_2d_fft.dat"):
         for i in range(M*N):
             f.write("{}\n".format(y[i].real))
             f.write("{}\n".format(y[i].imag))
-                
+
 
 if __name__ == "__main__":
-    gen_testcase_2d(M=1024,N=1024)
+    gen_testcase_2d(M=1024, N=1024)
     dct_2d()

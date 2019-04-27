@@ -119,13 +119,22 @@ __global__ void reorderInput(const T *x, T *y, const int M, const int N)
     {
         int cond = ((hid < M / 2) << 1) | (wid < N / 2);
         int index;
-        switch(cond)
+        switch (cond)
         {
-            case 0: index = INDEX(((M - hid) << 1) - 1, ((N - wid) << 1) - 1, N); break;
-            case 1: index = INDEX(((M - hid) << 1) - 1, wid << 1, N); break;
-            case 2: index = INDEX(hid << 1, ((N - wid) << 1) - 1, N); break;
-            case 3: index = INDEX(hid << 1, wid << 1, N); break;
-            default: assert(0);
+        case 0:
+            index = INDEX(((M - hid) << 1) - 1, ((N - wid) << 1) - 1, N);
+            break;
+        case 1:
+            index = INDEX(((M - hid) << 1) - 1, wid << 1, N);
+            break;
+        case 2:
+            index = INDEX(hid << 1, ((N - wid) << 1) - 1, N);
+            break;
+        case 3:
+            index = INDEX(hid << 1, wid << 1, N);
+            break;
+        default:
+            assert(0);
         }
         y[INDEX(hid, wid, N)] = x[index];
     }
@@ -158,7 +167,7 @@ inline __device__ cufftDoubleComplex complexAverage(const cufftDoubleComplex &x,
 __global__ void precomputeExpk(cufftDoubleComplex *expkM, cufftDoubleComplex *expkN, cufftDoubleComplex *expkMconj, const int M, const int N)
 {
     const int tid = blockDim.x * blockIdx.x + threadIdx.x;
-    if(tid < M)
+    if (tid < M)
     {
         int hid = tid;
         cufftDoubleComplex W_h_4M = make_double2(cos(PI * hid / (2 * M)), -1 * sin(PI * hid / (M * 2)));
@@ -166,7 +175,7 @@ __global__ void precomputeExpk(cufftDoubleComplex *expkM, cufftDoubleComplex *ex
         expkM[hid] = W_h_4M;
         expkMconj[hid] = W_h_4M_conj;
     }
-    if(tid < N)
+    if (tid < N)
     {
         int wid = tid;
         cufftDoubleComplex W_w_4N = make_double2(cos(PI * wid / (2 * N)), -1 * sin(PI * wid / (N * 2)));
@@ -178,22 +187,23 @@ __global__ void precomputeExpk(cufftDoubleComplex *expkM, cufftDoubleComplex *ex
 
 template <typename T>
 __global__ void computeMulExpk(const cufftDoubleComplex *V, T *y, const int M, const int N,
-                               const cufftDoubleComplex * __restrict__ expkM,
-                               const cufftDoubleComplex * __restrict__ expkN,
-                               const cufftDoubleComplex * __restrict__ expkMconj)
+                               const cufftDoubleComplex *__restrict__ expkM,
+                               const cufftDoubleComplex *__restrict__ expkN,
+                               const cufftDoubleComplex *__restrict__ expkMconj)
 {
     const int wid = blockDim.x * blockIdx.x + threadIdx.x;
     const int hid = blockDim.y * blockIdx.y + threadIdx.y;
     if (hid < M && wid < N)
     {
         cufftDoubleComplex tmp1 = complexMul(expkM[hid], V[INDEX(hid, wid, N)]);
-        if (hid) {
+        if (hid)
+        {
             cufftDoubleComplex tmp2 = complexMul(expkMconj[hid], V[INDEX(M - hid, wid, N)]);
             tmp1 = complexAverage(tmp1, tmp2);
         }
         cufftDoubleComplex tmp3 = complexMul(expkN[wid], tmp1);
 
-        y[INDEX(hid, wid, N)] = tmp3.x * 4./ (M * N);
+        y[INDEX(hid, wid, N)] = tmp3.x * 4. / (M * N);
     }
 }
 
@@ -245,20 +255,29 @@ __global__ void expand_twosides(cufftDoubleComplex *x, cufftDoubleComplex *y, co
 {
     const int wid = blockDim.x * blockIdx.x + threadIdx.x;
     const int hid = blockDim.y * blockIdx.y + threadIdx.y;
-    if(hid < M && wid < N){
-        if (hid == 0) {
-            if(wid <= N / 2){
+    if (hid < M && wid < N)
+    {
+        if (hid == 0)
+        {
+            if (wid <= N / 2)
+            {
                 y[wid] = x[wid];
-            } else {
-                cufftDoubleComplex tmp = x[N-wid];
+            }
+            else
+            {
+                cufftDoubleComplex tmp = x[N - wid];
                 tmp.y *= -1;
                 y[wid] = tmp;
             }
-        } else {
-            if(wid <= N / 2){
+        }
+        else
+        {
+            if (wid <= N / 2)
+            {
                 y[INDEX(hid, wid, N)] = x[INDEX(hid, wid, N / 2 + 1)];
             }
-            else{
+            else
+            {
                 cufftDoubleComplex tmp = x[INDEX(M - hid, N - wid, N / 2 + 1)];
                 tmp.y *= -1;
                 y[INDEX(hid, wid, N)] = tmp;
@@ -287,14 +306,14 @@ void dct_2d_fft(
 
     size_t size = M * N * sizeof(T);
     checkCUDA(cudaMalloc((void **)&d_x, size));
-    checkCUDA(cudaMalloc((void **)&expkM, M*sizeof(cufftDoubleComplex)));
-    checkCUDA(cudaMalloc((void **)&expkN, N*sizeof(cufftDoubleComplex)));
-    checkCUDA(cudaMalloc((void **)&expkMconj, M*sizeof(cufftDoubleComplex)));
+    checkCUDA(cudaMalloc((void **)&expkM, M * sizeof(cufftDoubleComplex)));
+    checkCUDA(cudaMalloc((void **)&expkN, N * sizeof(cufftDoubleComplex)));
+    checkCUDA(cudaMalloc((void **)&expkMconj, M * sizeof(cufftDoubleComplex)));
 
     checkCUDA(cudaMemcpy(d_x, h_x, size, cudaMemcpyHostToDevice));
     dim3 gridSize((N + TPB - 1) / TPB, (M + TPB - 1) / TPB, 1);
     dim3 blockSize(TPB, TPB, 1);
-    precomputeExpk<<<(std::max(M,N) + 1023)/1024, 1024>>>(expkM, expkN, expkMconj, M, N);
+    precomputeExpk<<<(std::max(M, N) + 1023) / 1024, 1024>>>(expkM, expkN, expkMconj, M, N);
     cudaDeviceSynchronize();
 
     timer_start = get_globaltime();
@@ -302,11 +321,11 @@ void dct_2d_fft(
     cudaMalloc((void **)&d_y, size * 2);
     cudaMalloc((void **)&scratch, size * 2);
 
-    reorderInput<T><<<gridSize, blockSize>>>(d_x, (T*)scratch, M, N);
-    
+    reorderInput<T><<<gridSize, blockSize>>>(d_x, (T *)scratch, M, N);
+
     cudaDeviceSynchronize();
 
-    dct_2d_d2z<T>((T*)scratch, (cufftDoubleComplex *)d_y, M, N);
+    dct_2d_d2z<T>((T *)scratch, (cufftDoubleComplex *)d_y, M, N);
     expand_twosides<<<gridSize, blockSize>>>((cufftDoubleComplex *)d_y, scratch, M, N);
     cudaDeviceSynchronize();
 
@@ -330,7 +349,7 @@ int validate_fft(T *result_cuda, T *result_gt, const int M, const int N)
     {
         for (int j = 0; j < N; ++j)
         {
-            int flag = (std::abs(result_cuda[(i * N + j)<<1] - result_gt[(i * N + j)<<1]) / std::abs(result_gt[(i * N + j)<<1])) < epsilon;
+            int flag = (std::abs(result_cuda[(i * N + j) << 1] - result_gt[(i * N + j) << 1]) / std::abs(result_gt[(i * N + j) << 1])) < epsilon;
             if (flag == 0)
             {
                 // printf("cuda_res[%d][%d]: %f, gt_res[%d][%d]: %f\n", i, j, result_cuda[i*N+j], i, j, result_gt[i*N+j]);
@@ -442,8 +461,8 @@ void load_data_fft(T *&data, T *&result, int &M, int &N)
     while (input_file2 >> val >> imag)
     {
         result[i] = val;
-        result[i+1] = imag;
-        i+=2;
+        result[i + 1] = imag;
+        i += 2;
     }
     printf("[I] data load done.\n");
 }
