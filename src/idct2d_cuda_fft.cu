@@ -65,7 +65,7 @@ inline __device__ int INDEX(const int hid, const int wid, const int N)
 }
 
 template <typename T>
-__global__ void idct2d_postprocess(const T *x, T *y, const int M, const int N, const int halfN, const T MN_over_4)
+__global__ void idct2d_postprocess(const T *x, T *y, const int M, const int N, const int halfN)
 {
     const int wid = blockDim.x * blockIdx.x + threadIdx.x;
     const int hid = blockDim.y * blockIdx.y + threadIdx.y;
@@ -90,7 +90,7 @@ __global__ void idct2d_postprocess(const T *x, T *y, const int M, const int N, c
         default:
             break;
         }
-        y[INDEX(hid, wid, N)] = x[index] * (MN_over_4);
+        y[INDEX(hid, wid, N)] = x[index] / 4;
     }
 }
 
@@ -226,26 +226,26 @@ __global__ __launch_bounds__(TPB *TPB, 10) void idct2d_preprocess(const T *input
         {
         case 0:
         {
+            T tmp1;
+            TComplex tmp_up;
+
             output[0].x = input[0];
             output[0].y = 0;
 
-            T tmp1 = input[halfN];
-            TComplex tmp_up;
+            tmp1 = input[halfN];
             tmp_up.x = tmp1;
             tmp_up.y = tmp1;
-            output[halfN] = complexConj(complexMul(expkN[haflN], tmp_up));
+            output[halfN] = complexConj(complexMul(expkN[halfN], tmp_up));
 
-            T tmp1 = input[INDEX(halfM, 0, N)];
-            TComplex tmp_up;
+            tmp1 = input[INDEX(halfM, 0, N)];
             tmp_up.x = tmp1;
             tmp_up.y = tmp1;
-            output[INDEX(halfM, 0, hlafN + 1)] = complexConj(complexMul(expkM[halfM], tmp_up));
+            output[INDEX(halfM, 0, halfN + 1)] = complexConj(complexMul(expkM[halfM], tmp_up));
 
-            T tmp1 = input[INDEX(halfM, halfN, N)];
-            TComplex tmp_up;
+            tmp1 = input[INDEX(halfM, halfN, N)];
             tmp_up.x = 0;
             tmp_up.y = 2 * tmp1;
-            output[INDEX(halfM, halfN, hlafN + 1)] = complexConj(complexMul(complexMul(expkM[halfM], expkN[haflN]), tmp_up));
+            output[INDEX(halfM, halfN, halfN + 1)] = complexConj(complexMul(complexMul(expkM[halfM], expkN[halfN]), tmp_up));
             break;
         }
 
@@ -260,33 +260,34 @@ __global__ __launch_bounds__(TPB *TPB, 10) void idct2d_preprocess(const T *input
             T tmp2 = input[INDEX(halfM, N - wid, N)];
             tmp_up.x = tmp1 - tmp2;
             tmp_up.y = tmp1 + tmp2;
-            output[INDEX(halfM, wid, hlafN + 1)] = complexConj(complexMul(complexMul(expkM[halfM], expkN[wid]), tmp_up));
+            output[INDEX(halfM, wid, halfN + 1)] = complexConj(complexMul(complexMul(expkM[halfM], expkN[wid]), tmp_up));
             break;
         }
 
         case 2:
         {
-            T tmp1 = input[INDEX(hid, 0, N)];
-            T tmp3 = input[INDEX(M - hid, 0, N)];
+            T tmp1, tmp3;
             TComplex tmp_up, tmp_down;
+
+            tmp1 = input[INDEX(hid, 0, N)];
+            tmp3 = input[INDEX(M - hid, 0, N)];
             tmp_up.x = tmp1;
             tmp_up.y = tmp3;
             tmp_down.x = tmp3;
             tmp_down.y = tmp1;
 
-            output[INDEX(hid, 0, hlafN + 1)] = complexConj(complexMul(expkM[hid], tmp_up));
-            output[INDEX(M - hid, 0, hlafN + 1)] = complexConj(complexMul(expkM[M - hid], tmp_down));
+            output[INDEX(hid, 0, halfN + 1)] = complexConj(complexMul(expkM[hid], tmp_up));
+            output[INDEX(M - hid, 0, halfN + 1)] = complexConj(complexMul(expkM[M - hid], tmp_down));
 
-            T tmp1 = input[INDEX(hid, halfN, N)];
-            T tmp3 = input[INDEX(M - hid, halfN, N)];
-            TComplex tmp_up, tmp_down;
+            tmp1 = input[INDEX(hid, halfN, N)];
+            tmp3 = input[INDEX(M - hid, halfN, N)];
             tmp_up.x = tmp1 - tmp3;
             tmp_up.y = tmp3 + tmp1;
             tmp_down.x = tmp3 - tmp1;
             tmp_down.y = tmp1 + tmp3;
 
-            output[INDEX(hid, halfN, hlafN + 1)] = complexConj(complexMul(complexMul(expkM[hid], expkN[haflN]), tmp_up));
-            output[INDEX(M - hid, halfN, hlafN + 1)] = complexConj(complexMul(complexMul(expkM[M - hid], expkN[halfN]), tmp_down));
+            output[INDEX(hid, halfN, halfN + 1)] = complexConj(complexMul(complexMul(expkM[hid], expkN[halfN]), tmp_up));
+            output[INDEX(M - hid, halfN, halfN + 1)] = complexConj(complexMul(complexMul(expkM[M - hid], expkN[halfN]), tmp_down));
             break;
         }
 
@@ -302,8 +303,8 @@ __global__ __launch_bounds__(TPB *TPB, 10) void idct2d_preprocess(const T *input
             tmp_down.x = tmp3 - tmp2;
             tmp_down.y = tmp1 + tmp4;
 
-            output[INDEX(hid, wid, hlafN + 1)] = complexConj(complexMul(complexMul(expkM[hid], expkN[wid]), tmp_up));
-            output[INDEX(M - hid, wid, hlafN + 1)] = complexConj(complexMul(complexMul(expkM[M - hid], expkN[wid]), tmp_down));
+            output[INDEX(hid, wid, halfN + 1)] = complexConj(complexMul(complexMul(expkM[hid], expkN[wid]), tmp_up));
+            output[INDEX(M - hid, wid, halfN + 1)] = complexConj(complexMul(complexMul(expkM[M - hid], expkN[wid]), tmp_down));
             break;
         }
 
@@ -332,14 +333,14 @@ void makeCufftPlan<cufftDoubleComplex>(const int M, const int N, cufftHandle *pl
 template <typename T>
 void ifft2D(cufftDoubleComplex *d_x, T *d_y, const int M, const int N, cufftHandle &plan)
 {
-    cufftExecZ2D(plan, (cufftDoubleReal *)d_x, d_y);
+    cufftExecZ2D(plan, (cufftDoubleComplex *)d_x, d_y);
     cudaDeviceSynchronize();
 }
 
 template <typename T>
 void ifft2D(cufftComplex *d_x, T *d_y, const int M, const int N, cufftHandle &plan)
 {
-    cufftExecC2R(plan, (cufftReal *)d_x, d_y);
+    cufftExecC2R(plan, (cufftComplex *)d_x, d_y);
     cudaDeviceSynchronize();
 }
 
@@ -375,14 +376,12 @@ void dct_2d_fft(const T *h_x, T *h_y, const int M, const int N)
     cudaDeviceSynchronize();
 
     timer_start = get_globaltime();
-    // reorderInput<T><<<gridSize, blockSize>>>(d_x, d_y, M, N, N / 2);
     idct2d_preprocess<T, TComplex><<<gridSize2, blockSize>>>(d_x, scratch, M, N, M / 2, N / 2, expkM, expkN);
     cudaDeviceSynchronize();
 
     ifft2D(scratch, d_x, M, N, plan);
 
-    // computeMulExpk<T, TComplex><<<gridSize2, blockSize>>>(scratch, d_y, M, N, M / 2, N / 2, 2. / (M * N), 4. / (M * N), expkM, expkN);
-    idct2d_postprocess<T><<<gridSize, blockSize>>>(d_x, d_y, M, N, N / 2, M * N / 4);
+    idct2d_postprocess<T><<<gridSize, blockSize>>>(d_x, d_y, M, N, N / 2);
     cudaDeviceSynchronize();
     timer_stop = get_globaltime();
 
