@@ -306,6 +306,8 @@ void dct_2d_fft(
 
     size_t size = M * N * sizeof(T);
     checkCUDA(cudaMalloc((void **)&d_x, size));
+    checkCUDA(cudaMalloc((void **)&d_y, size * 2));
+    checkCUDA(cudaMalloc((void **)&scratch, size * 2));
     checkCUDA(cudaMalloc((void **)&expkM, M * sizeof(cufftDoubleComplex)));
     checkCUDA(cudaMalloc((void **)&expkN, N * sizeof(cufftDoubleComplex)));
     checkCUDA(cudaMalloc((void **)&expkMconj, M * sizeof(cufftDoubleComplex)));
@@ -317,12 +319,7 @@ void dct_2d_fft(
     cudaDeviceSynchronize();
 
     timer_start = get_globaltime();
-    // checkCUDA(cudaMalloc((void **)&d_y, size));
-    cudaMalloc((void **)&d_y, size * 2);
-    cudaMalloc((void **)&scratch, size * 2);
-
     reorderInput<T><<<gridSize, blockSize>>>(d_x, (T *)scratch, M, N);
-
     cudaDeviceSynchronize();
 
     dct_2d_d2z<T>((T *)scratch, (cufftDoubleComplex *)d_y, M, N);

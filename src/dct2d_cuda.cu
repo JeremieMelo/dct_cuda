@@ -343,25 +343,23 @@ int main()
     load_data<dtype>(h_x, h_gt, M, N);
     h_y = new dtype[M * N];
 
-    for (int i = 0; i < 10; ++i)
-    {
-        printf("%d: %f\n", i, h_x[i]);
-    }
     double total_time = 0;
     for (int i = 0; i < NUM_RUNS; ++i)
     {
         dct_2d_naive<dtype>(h_x, h_y, M, N);
         int flag = validate2D<dtype>(h_y, h_gt, M, N);
-        printf("[I] validation: %d\n", flag);
+        if (!flag)
+        {
+            printf("[I] Error! Results are incorrect.\n", flag);
+            for (int i = 0; i < 64; ++i)
+            {
+                printf("index: %d, result: %f, GT: %f, scale: %f\n", i, h_y[i], h_gt[i], h_y[i] / h_gt[i]);
+            }
+        }
         printf("[D] dct 2D takes %g ms\n", (timer_stop - timer_start) * get_timer_period());
         total_time += i > 0 ? (timer_stop - timer_start) * get_timer_period() : 0;
     }
     printf("[D] dct 2D (%d * %d) takes average %g ms\n", M, N, total_time / (NUM_RUNS - 1));
-
-    for (int i = 0; i < 10; ++i)
-    {
-        printf("%d: %f\n", i, h_y[i]);
-    }
 
     delete[] h_x;
     delete[] h_y;

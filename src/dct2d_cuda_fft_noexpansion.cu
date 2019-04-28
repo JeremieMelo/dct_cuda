@@ -146,7 +146,7 @@ inline __device__ cufftDoubleReal RealPartOfMul(const cufftDoubleComplex &x, con
     return x.x * y.x - x.y * y.y;
 }
 
-inline __device__ float RealPartOfMul(const cufftComplex &x, const cufftComplex &y)
+inline __device__ cufftReal RealPartOfMul(const cufftComplex &x, const cufftComplex &y)
 {
     return x.x * y.x - x.y * y.y;
 }
@@ -156,7 +156,7 @@ inline __device__ cufftDoubleReal ImaginaryPartOfMul(const cufftDoubleComplex &x
     return x.x * y.y + x.y * y.x;
 }
 
-inline __device__ float ImaginaryPartOfMul(const cufftComplex &x, const cufftComplex &y)
+inline __device__ cufftReal ImaginaryPartOfMul(const cufftComplex &x, const cufftComplex &y)
 {
     return x.x * y.y + x.y * y.x;
 }
@@ -496,6 +496,7 @@ __global__ __launch_bounds__(TPB *TPB, 2) void computeMulExpk_shared(const TComp
         }
     }
 }
+
 template <typename T>
 void makeCufftPlan(const int M, const int N, cufftHandle *plan) {}
 
@@ -511,17 +512,15 @@ void makeCufftPlan<cufftDoubleComplex>(const int M, const int N, cufftHandle *pl
     cufftPlan2d(plan, M, N, CUFFT_D2Z);
 }
 
-template <typename T>
-void fft2D(T *d_x, cufftDoubleComplex *d_y, const int M, const int N, cufftHandle &plan)
+void fft2D(cufftDoubleReal *d_x, cufftDoubleComplex *d_y, const int M, const int N, cufftHandle &plan)
 {
-    cufftExecD2Z(plan, (cufftDoubleReal *)d_x, d_y);
+    cufftExecD2Z(plan, d_x, d_y);
     cudaDeviceSynchronize();
 }
 
-template <typename T>
-void fft2D(T *d_x, cufftComplex *d_y, const int M, const int N, cufftHandle &plan)
+void fft2D(cufftReal *d_x, cufftComplex *d_y, const int M, const int N, cufftHandle &plan)
 {
-    cufftExecR2C(plan, (cufftReal *)d_x, d_y);
+    cufftExecR2C(plan, d_x, d_y);
     cudaDeviceSynchronize();
 }
 

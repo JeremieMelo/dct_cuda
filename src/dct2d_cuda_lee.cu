@@ -12,7 +12,7 @@
 #define PI (3.141592653589793238462643383279502884197169399375105820974944592307816406286208998628034825342117067982148086513282306647093844609550582231725359408128481)
 #define TPB (1024)
 #define epsilon (1e-2) //relative error
-#define NUM_RUNS (5)
+#define NUM_RUNS (101)
 
 #define checkCUDA(status)                       \
     {                                           \
@@ -452,7 +452,7 @@ __global__ __launch_bounds__(1024, 10) void dct_transpose_kernel(const TValue *_
     const TIndex halfN = halfLen;
     while (halfLen)
     {
-        #pragma unroll 2
+#pragma unroll 2
         for (TIndex thread_id = threadIdx.x; thread_id < halfN; thread_id += blockDim.x)
         {
             TIndex rest = thread_id & (halfN - 1);
@@ -477,7 +477,7 @@ __global__ __launch_bounds__(1024, 10) void dct_transpose_kernel(const TValue *_
     halfLen = 2;
     while (len < N)
     {
-        #pragma unroll 2
+#pragma unroll 2
         for (TIndex thread_id = threadIdx.x; thread_id < halfN; thread_id += blockDim.x)
         {
             TIndex rest = thread_id & (halfN - 1);
@@ -498,7 +498,7 @@ __global__ __launch_bounds__(1024, 10) void dct_transpose_kernel(const TValue *_
         __syncthreads();
         swap(curr_ptr, next_ptr);
     }
-    #pragma unroll 2
+#pragma unroll 2
     for (TIndex thread_id = threadIdx.x; thread_id < halfN; thread_id += blockDim.x)
     {
         TIndex rest = thread_id & (halfN - 1);
@@ -629,6 +629,8 @@ void dct_2d_lee(
 
     size_t size = M * N * sizeof(T);
     cudaMalloc((void **)&d_x, size);
+    cudaMalloc((void **)&d_y, size);
+    cudaMalloc((void **)&scratch, size);
     cudaMalloc((void **)&d_cos0, N * sizeof(T)); // row
     cudaMalloc((void **)&d_cos1, M * sizeof(T)); // column
 
@@ -643,9 +645,6 @@ void dct_2d_lee(
     cudaDeviceSynchronize();
 
     timer_start = get_globaltime();
-    cudaMalloc((void **)&d_y, size);
-    cudaMalloc((void **)&scratch, size);
-
     #if 1
     dct_transpose<T>(d_x, scratch, d_cos0, M, N);
     dct_transpose<T>(scratch, d_y, d_cos1, N, M);

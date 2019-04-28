@@ -65,7 +65,7 @@ inline __device__ int INDEX(const int hid, const int wid, const int N)
 }
 
 template <typename T>
-__global__ void idct2d_postprocess(const T *x, T *y, const int M, const int N, const int halfN)
+__global__ void idct2d_postprocess_backup(const T *x, T *y, const int M, const int N, const int halfN)
 {
     const int wid = blockDim.x * blockIdx.x + threadIdx.x;
     const int hid = blockDim.y * blockIdx.y + threadIdx.y;
@@ -94,6 +94,37 @@ __global__ void idct2d_postprocess(const T *x, T *y, const int M, const int N, c
     }
 }
 
+template <typename T>
+__global__ void idct2d_postprocess(const T *x, T *y, const int M, const int N, const int halfN)
+{
+    const int wid = blockDim.x * blockIdx.x + threadIdx.x;
+    const int hid = blockDim.y * blockIdx.y + threadIdx.y;
+    if (hid < M && wid < N)
+    {
+        int cond = ((hid < M / 2) << 1) | (wid < N / 2);
+        int index;
+        switch (cond)
+        {
+        case 0:
+            index = INDEX(((M - hid) << 1) - 1, ((N - wid) << 1) - 1, N);
+            break;
+        case 1:
+            index = INDEX(((M - hid) << 1) - 1, wid << 1, N);
+            break;
+        case 2:
+            index = INDEX(hid << 1, ((N - wid) << 1) - 1, N);
+            break;
+        case 3:
+            index = INDEX(hid << 1, wid << 1, N);
+            break;
+        default:
+            assert(0);
+            break;
+        }
+        y[index] = x[INDEX(hid, wid, N)] / 4;
+    }
+}
+
 inline __device__ cufftDoubleComplex complexMul(const cufftDoubleComplex &x, const cufftDoubleComplex &y)
 {
     cufftDoubleComplex res;
@@ -115,7 +146,7 @@ inline __device__ cufftDoubleReal RealPartOfMul(const cufftDoubleComplex &x, con
     return x.x * y.x - x.y * y.y;
 }
 
-inline __device__ float RealPartOfMul(const cufftComplex &x, const cufftComplex &y)
+inline __device__ cufftReal RealPartOfMul(const cufftComplex &x, const cufftComplex &y)
 {
     return x.x * y.x - x.y * y.y;
 }
@@ -125,7 +156,7 @@ inline __device__ cufftDoubleReal ImaginaryPartOfMul(const cufftDoubleComplex &x
     return x.x * y.y + x.y * y.x;
 }
 
-inline __device__ float ImaginaryPartOfMul(const cufftComplex &x, const cufftComplex &y)
+inline __device__ cufftReal ImaginaryPartOfMul(const cufftComplex &x, const cufftComplex &y)
 {
     return x.x * y.y + x.y * y.x;
 }
@@ -330,17 +361,15 @@ void makeCufftPlan<cufftDoubleComplex>(const int M, const int N, cufftHandle *pl
     cufftPlan2d(plan, M, N, CUFFT_Z2D);
 }
 
-template <typename T>
-void ifft2D(cufftDoubleComplex *d_x, T *d_y, const int M, const int N, cufftHandle &plan)
+void ifft2D(cufftDoubleComplex *d_x, cufftDoubleReal *d_y, const int M, const int N, cufftHandle &plan)
 {
-    cufftExecZ2D(plan, (cufftDoubleComplex *)d_x, d_y);
+    cufftExecZ2D(plan, d_x, d_y);
     cudaDeviceSynchronize();
 }
 
-template <typename T>
-void ifft2D(cufftComplex *d_x, T *d_y, const int M, const int N, cufftHandle &plan)
+void ifft2D(cufftComplex *d_x, cufftReal *d_y, const int M, const int N, cufftHandle &plan)
 {
-    cufftExecC2R(plan, (cufftComplex *)d_x, d_y);
+    cufftExecC2R(plan, d_x, d_y);
     cudaDeviceSynchronize();
 }
 
