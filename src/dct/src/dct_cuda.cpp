@@ -12,7 +12,7 @@
 
 at::Tensor dct_forward(
         at::Tensor x,
-        at::Tensor expk) 
+        at::Tensor expk)
 {
     CHECK_GPU(x);
     CHECK_CONTIGUOUS(x);
@@ -20,7 +20,7 @@ at::Tensor dct_forward(
     CHECK_CONTIGUOUS(expk);
 
     auto N = x.size(-1);
-    auto M = x.numel()/N; 
+    auto M = x.numel()/N;
 
     //std::cout << "x\n" << x << "\n";
     //auto x_reorder = at::empty_like(x);
@@ -28,9 +28,9 @@ at::Tensor dct_forward(
 
     AT_DISPATCH_FLOATING_TYPES(x.type(), "dct_forward", [&] {
             computeReorderCudaLauncher<scalar_t>(
-                    x.data<scalar_t>(), 
-                    M, 
-                    N, 
+                    x.data<scalar_t>(),
+                    M,
+                    N,
                     x_reorder.data<scalar_t>()
                     );
             //std::cout << "x_reorder\n" << x_reorder << "\n";
@@ -39,23 +39,23 @@ at::Tensor dct_forward(
             y.mul_(1.0/N);
             //std::cout << "y\n" << y << "\n";
 
-            // re-use x_reorder as output 
+            // re-use x_reorder as output
             computeMulExpkCudaLauncher<scalar_t>(
-                    y.data<scalar_t>(), 
-                    expk.data<scalar_t>(), 
-                    M, 
-                    N, 
+                    y.data<scalar_t>(),
+                    expk.data<scalar_t>(),
+                    M,
+                    N,
                     x_reorder.data<scalar_t>()
                     );
             //std::cout << "z\n" << z << "\n";
     });
 
-    return x_reorder; 
+    return x_reorder;
 }
 
 at::Tensor idct_forward(
         at::Tensor x,
-        at::Tensor expk) 
+        at::Tensor expk)
 {
     CHECK_GPU(x);
     CHECK_CONTIGUOUS(x);
@@ -63,25 +63,25 @@ at::Tensor idct_forward(
     CHECK_CONTIGUOUS(expk);
 
     auto N = x.size(-1);
-    auto M = x.numel()/N; 
+    auto M = x.numel()/N;
 
     //std::cout << "x\n" << x << "\n";
     // vk = 0.5*W_{4N}^{k} (c[k] - c[N-k])
-    // vk is hermitian symmetric, only fill in half 
+    // vk is hermitian symmetric, only fill in half
     auto v = at::empty({M*N+std::max(M, N)}, x.options()).resize_({M, N/2+1, 2});
 
     AT_DISPATCH_FLOATING_TYPES(x.type(), "idct_forward", [&] {
             computeVkCudaLauncher<scalar_t>(
-                    x.data<scalar_t>(), 
-                    expk.data<scalar_t>(), 
-                    M, 
-                    N, 
+                    x.data<scalar_t>(),
+                    expk.data<scalar_t>(),
+                    M,
+                    N,
                     v.data<scalar_t>()
                     );
 
             //std::cout << "x_reorder\n" << x_reorder << "\n";
 
-            // y is real now 
+            // y is real now
             auto y = at::irfft(v, 1, false, true, {N});
 
             //std::cout << "y\n" << y << "\n";
@@ -92,24 +92,24 @@ at::Tensor idct_forward(
             // reuse v
             v.resize_({M, N});
             computeReorderReverseCudaLauncher(
-                    y.data<scalar_t>(), 
-                    M, 
-                    N, 
+                    y.data<scalar_t>(),
+                    M,
+                    N,
                     v.data<scalar_t>()
                     );
             //std::cout << "z\n" << z << "\n";
-            // this is to match python implementation 
+            // this is to match python implementation
             // normal way should be multiply by 0.25*N
-            v.mul_(0.5*N); 
+            v.mul_(0.5*N);
     });
 
-    return v; 
+    return v;
 }
 
 at::Tensor dct2_forward(
         at::Tensor x,
-        at::Tensor expk0, 
-        at::Tensor expk1) 
+        at::Tensor expk0,
+        at::Tensor expk1)
 {
     CHECK_GPU(x);
     CHECK_CONTIGUOUS(x);
@@ -122,14 +122,14 @@ at::Tensor dct2_forward(
 
     //std::cout << "x\n" << x << "\n";
     auto N = x.size(-1);
-    auto M = x.numel()/N; 
+    auto M = x.numel()/N;
     auto x_reorder = at::empty({M, N}, x.options());
 
     AT_DISPATCH_FLOATING_TYPES(x.type(), "dct2_forward", [&] {
             computeReorderCudaLauncher<scalar_t>(
-                    x.data<scalar_t>(), 
-                    M, 
-                    N, 
+                    x.data<scalar_t>(),
+                    M,
+                    N,
                     x_reorder.data<scalar_t>()
                     );
 
@@ -139,27 +139,27 @@ at::Tensor dct2_forward(
             //y.mul_(1.0/N);
             //std::cout << "y\n" << y << "\n";
 
-            // re-use x_reorder as output 
+            // re-use x_reorder as output
             //std::cout << "expk1\n" << expk1 << "\n";
             computeMulExpkCudaLauncher(
-                    y.data<scalar_t>(), 
-                    expk1.data<scalar_t>(), 
-                    M, 
-                    N, 
+                    y.data<scalar_t>(),
+                    expk1.data<scalar_t>(),
+                    M,
+                    N,
                     x_reorder.data<scalar_t>()
                     );
             //std::cout << "z\n" << x_reorder << "\n";
 
-            // 1D DCT to rows 
+            // 1D DCT to rows
             auto xt = x_reorder.transpose(-2, -1).contiguous();
             //std::cout << "xt\n" << xt << "\n";
-            // I do not want to allocate memory another time 
+            // I do not want to allocate memory another time
             //x_reorder = at::empty_like(xt);
             x_reorder = x_reorder.view_as(xt);
             computeReorderCudaLauncher<scalar_t>(
-                    xt.data<scalar_t>(), 
-                    N, 
-                    M, 
+                    xt.data<scalar_t>(),
+                    N,
+                    M,
                     x_reorder.data<scalar_t>()
                     );
 
@@ -169,13 +169,13 @@ at::Tensor dct2_forward(
             //y.mul_(1.0/M);
             //std::cout << "y\n" << y << "\n";
 
-            // re-use x_reorder as output 
+            // re-use x_reorder as output
             //std::cout << "expk0\n" << expk0 << "\n";
             computeMulExpkCudaLauncher(
-                    y.data<scalar_t>(), 
-                    expk0.data<scalar_t>(), 
-                    N, 
-                    M, 
+                    y.data<scalar_t>(),
+                    expk0.data<scalar_t>(),
+                    N,
+                    M,
                     x_reorder.data<scalar_t>()
                     );
 
@@ -183,13 +183,13 @@ at::Tensor dct2_forward(
             x_reorder.transpose_(-2, -1);
     });
 
-    return x_reorder.contiguous(); 
+    return x_reorder.contiguous();
 }
 
 at::Tensor idct2_forward(
         at::Tensor x,
-        at::Tensor expk0, 
-        at::Tensor expk1) 
+        at::Tensor expk0,
+        at::Tensor expk1)
 {
     CHECK_GPU(x);
     CHECK_CONTIGUOUS(x);
@@ -199,21 +199,21 @@ at::Tensor idct2_forward(
     CHECK_CONTIGUOUS(expk1);
 
     auto N = x.size(-1);
-    auto M = x.numel()/N; 
+    auto M = x.numel()/N;
 
     // 1D DCT to columns
 
     //std::cout << "x\n" << x << "\n";
     // vk = 0.5*W_{4N}^{k} (c[k] - c[N-k])
-    // vk is hermitian symmetric, only fill in half 
+    // vk is hermitian symmetric, only fill in half
     auto v = at::empty({M*N+std::max(M, N)}, x.options()).resize_({M, N/2+1, 2});
 
     AT_DISPATCH_FLOATING_TYPES(x.type(), "idct2_forward", [&] {
             computeVkCudaLauncher<scalar_t>(
-                    x.data<scalar_t>(), 
-                    expk1.data<scalar_t>(), 
-                    M, 
-                    N, 
+                    x.data<scalar_t>(),
+                    expk1.data<scalar_t>(),
+                    M,
+                    N,
                     v.data<scalar_t>()
                     );
 
@@ -227,27 +227,27 @@ at::Tensor idct2_forward(
             //std::cout << "expk\n" << expk << "\n";
             //auto z = at::empty_like(x);
             //auto z = at::empty({M, N}, x.options());
-            // reuse v 
+            // reuse v
             v.resize_({M, N});
             computeReorderReverseCudaLauncher(
-                    y.data<scalar_t>(), 
-                    M, 
-                    N, 
+                    y.data<scalar_t>(),
+                    M,
+                    N,
                     v.data<scalar_t>()
                     );
             //std::cout << "z\n" << z << "\n";
 
-            // 1D DCT to rows 
+            // 1D DCT to rows
             auto xt = v.transpose(-2, -1).contiguous();
             //std::cout << "xt\n" << xt << "\n";
             // vk = 0.5*W_{4N}^{k} (c[k] - c[N-k])
-            // reuse v 
+            // reuse v
             v.resize_({N, M/2+1, 2});
             computeVkCudaLauncher<scalar_t>(
-                    xt.data<scalar_t>(), 
-                    expk0.data<scalar_t>(), 
-                    N, 
-                    M, 
+                    xt.data<scalar_t>(),
+                    expk0.data<scalar_t>(),
+                    N,
+                    M,
                     v.data<scalar_t>()
                     );
 
@@ -259,23 +259,23 @@ at::Tensor idct2_forward(
 
             //std::cout << "y\n" << y << "\n";
 
-            // I do not want to allocate memory another time 
+            // I do not want to allocate memory another time
             v.resize_({N, M});
             computeReorderReverseCudaLauncher(
-                    y.data<scalar_t>(), 
-                    N, 
-                    M, 
+                    y.data<scalar_t>(),
+                    N,
+                    M,
                     v.data<scalar_t>()
                     );
             //std::cout << "z\n" << z << "\n";
 
-            // this is to match python implementation 
+            // this is to match python implementation
             // normal way should be multiply by 0.25*0.25*M*N
             v.mul_(0.25*M*N);
             v.transpose_(-2, -1);
     });
 
-    return v.contiguous(); 
+    return v.contiguous();
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
