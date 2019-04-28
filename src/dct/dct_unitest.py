@@ -445,7 +445,7 @@ def eval_runtime():
     # print(dct_N(x))
 
     N = 4096
-    runs = 1
+    runs = 100
     # x = torch.empty(10, N, N, dtype=torch.float64).uniform_(0, 10.0).cuda()
     with open("../test_2d.dat", "r") as f:
         lines = f.readlines()
@@ -498,11 +498,12 @@ def eval_runtime():
     print("CUDA: DCT2d_2N Function takes %.5f ms" % ((time.time()-tt)/runs*1000))
     '''
     dct2func = dct.DCT2(expk0, expk1, algorithm='N')
-    torch.cuda.synchronize()
-    tt = time.time()
-    #with torch.autograd.profiler.profile(use_cuda=True) as prof:
-    # for i in range(runs):
     y_N = dct2func.forward(x)
+    torch.cuda.synchronize()
+    # with torch.autograd.profiler.profile(use_cuda=True) as prof:
+    tt = time.time()
+    for i in range(runs):
+        y_N = dct2func.forward(x)
     torch.cuda.synchronize()
     #print(prof)
     print("CUDA: DCT2d_N Function takes %.5f ms" % ((time.time()-tt)/runs*1000))

@@ -20,6 +20,7 @@
 #define TPB (32)
 #define epsilon (1e-2)
 #define NUM_RUNS (10)
+typedef double dtype;
 
 #define checkCUDA(status)                       \
     {                                           \
@@ -47,21 +48,6 @@ inline double get_timer_period(void)
 }
 
 hr_clock_rep timer_start, timer_stop;
-
-template <typename T>
-inline __host__ __device__ void swap(T &x, T &y)
-{
-    T tmp = x;
-    x = y;
-    y = tmp;
-}
-
-/// Return true if a number is power of 2
-template <typename T = unsigned>
-inline bool isPowerOf2(T val)
-{
-    return val && (val & (val - 1)) == 0;
-}
 
 // convert a linear index to a linear index in the transpose
 struct transpose_index : public thrust::unary_function<size_t, size_t>
@@ -159,7 +145,7 @@ __global__ __launch_bounds__(1024, 2) void dct_2d_kernel_transpose_1(T *x, T *y,
     {
         for (int j = 0; j < N; ++j)
         {
-            y[xtid * N + ytid] += x[ytid * N + j] * cos(PI * (j + 0.5) / N * xtid);
+            y[xtid * M + ytid] += x[ytid * N + j] * cos(PI * (j + 0.5) / N * xtid);
         }
     }
 }
@@ -177,7 +163,7 @@ __global__ __launch_bounds__(1024, 2) void dct_2d_kernel_transpose_2(T *x, T *y,
         {
             tmp += y[ytid * M + j] * cos(PI * (j + 0.5) / M * xtid);
         }
-        x[xtid * M + ytid] = tmp / (M * N) * 4;
+        x[xtid * N + ytid] = tmp / (M * N) * 4;
     }
 }
 
@@ -332,7 +318,6 @@ void load_data(T *&data, T *&result, int &M, int &N)
     printf("[I] data load done.\n");
 }
 
-typedef double dtype;
 int main()
 {
     dtype *h_x;

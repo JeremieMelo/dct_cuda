@@ -13,6 +13,7 @@
 #define TPB (1024)
 #define epsilon (1e-2) //relative error
 #define NUM_RUNS (101)
+typedef double dtype;
 
 #define checkCUDA(status)                       \
     {                                           \
@@ -748,7 +749,6 @@ void load_data(T *&data, T *&result, int &M, int &N)
     printf("[I] data load done.\n");
 }
 
-typedef double dtype;
 int main()
 {
     dtype *h_x;
