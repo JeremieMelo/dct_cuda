@@ -1,4 +1,4 @@
-// idct(idxst(x)) is similar to the idct2d(x),
+// idxst(idct(x)) is similar to the idct2d(x),
 // except tiny modification on preprocessing and postprocessing
 #include <cuda.h>
 #include "cuda_runtime.h"
@@ -67,12 +67,12 @@ inline __device__ int INDEX(const int hid, const int wid, const int N)
 }
 
 // Adpated from idct2d_postprocess() with changes on sign and scale
-// if (wid % 2 == 1)
+// if (hid % 2 == 1)
 //     new_output[hid][wid] = -0.5 * output[hid][wid];
 // else
 //     new_output[hid][wid] = 0.5 * output[hid][wid];
 template <typename T>
-__global__ void idct_idxst_postprocess_backup(const T *x, T *y, const int M, const int N, const int halfN)
+__global__ void idxst_idct_postprocess_backup(const T *x, T *y, const int M, const int N, const int halfN)
 {
     const int wid = blockDim.x * blockIdx.x + threadIdx.x;
     const int hid = blockDim.y * blockIdx.y + threadIdx.y;
@@ -88,11 +88,11 @@ __global__ void idct_idxst_postprocess_backup(const T *x, T *y, const int M, con
             break;
         case 1:
             index = INDEX(2 * M - (hid + 1), wid / 2, halfN);
-            y[INDEX(hid, wid, N)] = 0.5 * x[index];
+            y[INDEX(hid, wid, N)] = -0.5 * x[index];
             break;
         case 2:
             index = INDEX(hid, N - (wid + 1) / 2, halfN);
-            y[INDEX(hid, wid, N)] = -0.5 * x[index];
+            y[INDEX(hid, wid, N)] = 0.5 * x[index];
             break;
         case 3:
             index = INDEX(hid, wid / 2, halfN);
@@ -106,12 +106,12 @@ __global__ void idct_idxst_postprocess_backup(const T *x, T *y, const int M, con
 }
 
 // Adpated from idct2d_postprocess() with changes on sign and scale
-// if (wid % 2 == 1)
+// if (hid % 2 == 1)
 //     new_output[hid][wid] = -0.5 * output[hid][wid];
 // else
 //     new_output[hid][wid] = 0.5 * output[hid][wid];
 template <typename T>
-__global__ void idct_idxst_postprocess(const T *x, T *y, const int M, const int N, const int halfN)
+__global__ void idxst_idct_postprocess(const T *x, T *y, const int M, const int N, const int halfN)
 {
     const int wid = blockDim.x * blockIdx.x + threadIdx.x;
     const int hid = blockDim.y * blockIdx.y + threadIdx.y;
@@ -127,11 +127,11 @@ __global__ void idct_idxst_postprocess(const T *x, T *y, const int M, const int 
             break;
         case 1:
             index = INDEX(((M - hid) << 1) - 1, wid << 1, N);
-            y[index] = 0.5 * x[INDEX(hid, wid, N)];
+            y[index] = -0.5 * x[INDEX(hid, wid, N)];
             break;
         case 2:
             index = INDEX(hid << 1, ((N - wid) << 1) - 1, N);
-            y[index] = -0.5 * x[INDEX(hid, wid, N)];
+            y[index] = 0.5 * x[INDEX(hid, wid, N)];
             break;
         case 3:
             index = INDEX(hid << 1, wid << 1, N);
@@ -263,12 +263,12 @@ __global__ void precomputeExpk(cufftComplex *expkM, cufftComplex *expkN, const i
 }
 
 // Adpated from idct2d_preprocess(). The only change is the reordered input
-// if (wid != 0)
-//     new_input[hid][wid] = input[hid][N - wid];
+// if (hid != 0)
+//     new_input[hid][wid] = input[M - hid][wid];
 // else
-//     new_input[hid][0] = 0
+//     new_input[0][wid] = 0
 template <typename T, typename TComplex>
-__global__ __launch_bounds__(TPB *TPB, 10) void idct_idxst_preprocess(const T *input, TComplex *output, const int M, const int N,
+__global__ __launch_bounds__(TPB *TPB, 10) void idxst_idct_preprocess(const T *input, TComplex *output, const int M, const int N,
                                                                       const int halfM, const int halfN,
                                                                       const TComplex *__restrict__ expkM, const TComplex *__restrict__ expkN)
 {
@@ -287,13 +287,13 @@ __global__ __launch_bounds__(TPB *TPB, 10) void idct_idxst_preprocess(const T *i
             output[0].x = 0;
             output[0].y = 0;
 
-            tmp1 = input[halfN];
+            output[halfN].x = 0;
+            output[halfN].y = 0;
+
+            tmp1 = input[INDEX(halfM, 0, N)];
             tmp_up.x = tmp1;
             tmp_up.y = tmp1;
-            output[halfN] = complexConj(complexMul(expkN[halfN], tmp_up));
-
-            output[INDEX(halfM, 0, halfN + 1)].x = 0;
-            output[INDEX(halfM, 0, halfN + 1)].y = 0;
+            output[INDEX(halfM, 0, halfN + 1)] = complexConj(complexMul(expkM[halfM], tmp_up));
 
             tmp1 = input[INDEX(halfM, halfN, N)];
             tmp_up.x = 0;
@@ -304,13 +304,11 @@ __global__ __launch_bounds__(TPB *TPB, 10) void idct_idxst_preprocess(const T *i
 
         case 1:
         {
-            TComplex tmp_up;
-            tmp_up.x = input[N - wid];
-            tmp_up.y = input[wid];
-            output[wid] = complexConj(complexMul(expkN[wid], tmp_up));
+            output[wid].x = 0;
+            output[wid].y = 0;
 
-            T tmp1 = input[INDEX(halfM, N - wid, N)];
-            T tmp2 = input[INDEX(halfM, wid, N)];
+            T tmp1 = input[INDEX(halfM, wid, N)];
+            T tmp2 = input[INDEX(halfM, N - wid, N)];
             tmp_up.x = tmp1 - tmp2;
             tmp_up.y = tmp1 + tmp2;
             output[INDEX(halfM, wid, halfN + 1)] = complexConj(complexMul(complexMul(expkM[halfM], expkN[wid]), tmp_up));
@@ -322,13 +320,18 @@ __global__ __launch_bounds__(TPB *TPB, 10) void idct_idxst_preprocess(const T *i
             T tmp1, tmp3;
             TComplex tmp_up, tmp_down;
 
-            output[INDEX(hid, 0, halfN + 1)].x = 0;
-            output[INDEX(hid, 0, halfN + 1)].y = 0;
-            output[INDEX(M - hid, 0, halfN + 1)].x = 0;
-            output[INDEX(M - hid, 0, halfN + 1)].y = 0;
+            tmp1 = input[INDEX(M - hid, 0, N)];
+            tmp3 = input[INDEX(hid, 0, N)];
+            tmp_up.x = tmp1;
+            tmp_up.y = tmp3;
+            tmp_down.x = tmp3;
+            tmp_down.y = tmp1;
 
-            tmp1 = input[INDEX(hid, halfN, N)];
-            tmp3 = input[INDEX(M - hid, halfN, N)];
+            output[INDEX(hid, 0, halfN + 1)] = complexConj(complexMul(expkM[hid], tmp_up));
+            output[INDEX(M - hid, 0, halfN + 1)] = complexConj(complexMul(expkM[M - hid], tmp_down));
+
+            tmp1 = input[INDEX(M - hid, halfN, N)];
+            tmp3 = input[INDEX(hid, halfN, N)];
             tmp_up.x = tmp1 - tmp3;
             tmp_up.y = tmp3 + tmp1;
             tmp_down.x = tmp3 - tmp1;
@@ -341,10 +344,10 @@ __global__ __launch_bounds__(TPB *TPB, 10) void idct_idxst_preprocess(const T *i
 
         case 3:
         {
-            T tmp1 = input[INDEX(hid, N - wid, N)];
-            T tmp2 = input[INDEX(hid, wid, N)];
-            T tmp3 = input[INDEX(M - hid, N - wid, N)];
-            T tmp4 = input[INDEX(M - hid, wid, N)];
+            T tmp1 = input[INDEX(M - hid, wid, N)];
+            T tmp2 = input[INDEX(M - hid, N - wid, N)];
+            T tmp3 = input[INDEX(hid, wid, N)];
+            T tmp4 = input[INDEX(hid, N - wid, N)];
             TComplex tmp_up, tmp_down;
             tmp_up.x = tmp1 - tmp4;
             tmp_up.y = tmp3 + tmp2;
@@ -391,7 +394,7 @@ void ifft2D(cufftComplex *d_x, cufftReal *d_y, const int M, const int N, cufftHa
 }
 
 template <typename T, typename TReal = cufftDoubleReal, typename TComplex = cufftDoubleComplex>
-void idct_idxst(const T *h_x, T *h_y, const int M, const int N)
+void idxst_idct(const T *h_x, T *h_y, const int M, const int N)
 {
     T *d_x;
     T *d_y;
@@ -424,12 +427,12 @@ void idct_idxst(const T *h_x, T *h_y, const int M, const int N)
     cudaDeviceSynchronize();
 
     timer_start = get_globaltime();
-    idct_idxst_preprocess<T, TComplex><<<gridSize2, blockSize>>>(d_x, scratch, M, N, M / 2, N / 2, expkM, expkN);
+    idxst_idct_preprocess<T, TComplex><<<gridSize2, blockSize>>>(d_x, scratch, M, N, M / 2, N / 2, expkM, expkN);
     cudaDeviceSynchronize();
 
     ifft2D(scratch, ifft_result, M, N, plan);
 
-    idct_idxst_postprocess<T><<<gridSize, blockSize>>>(ifft_result, d_y, M, N, N / 2);
+    idxst_idct_postprocess<T><<<gridSize, blockSize>>>(ifft_result, d_y, M, N, N / 2);
     cudaDeviceSynchronize();
     timer_stop = get_globaltime();
 
@@ -510,7 +513,7 @@ void load_data(T *&data, T *&result, int &M, int &N)
         i++;
     }
 
-    std::ifstream input_file2("idct_idxst.dat", std::ios_base::in);
+    std::ifstream input_file2("idxst_idct.dat", std::ios_base::in);
 
     i = 0;
     input_file2 >> M;
@@ -537,7 +540,7 @@ int main()
     double total_time = 0;
     for (int i = 0; i < NUM_RUNS; ++i)
     {
-        idct_idxst<dtype, dtypeReal, dtypeComplex>(h_x, h_y, M, N);
+        idxst_idct<dtype, dtypeReal, dtypeComplex>(h_x, h_y, M, N);
         int flag = validate2D<dtype>(h_y, h_gt, M, N);
         if (!flag)
         {
@@ -547,11 +550,11 @@ int main()
                 printf("index: %d, result: %f, GT: %f, scale: %f\n", i, h_y[i], h_gt[i], h_y[i] / h_gt[i]);
             }
         }
-        printf("[D] idct_idxst takes %g ms\n", (timer_stop - timer_start) * get_timer_period());
+        printf("[D] idxst_idct takes %g ms\n", (timer_stop - timer_start) * get_timer_period());
         total_time += i > 0 ? (timer_stop - timer_start) * get_timer_period() : 0;
     }
 
-    printf("[D] idct_idxst (%d * %d) takes average %g ms\n", M, N, total_time / (NUM_RUNS - 1));
+    printf("[D] idxst_idct (%d * %d) takes average %g ms\n", M, N, total_time / (NUM_RUNS - 1));
 
     delete[] h_x;
     delete[] h_y;
