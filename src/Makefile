@@ -36,5 +36,9 @@ idct2d_cuda_fft: idct2d_cuda_fft.cu
 	mkdir -p bin
 	nvcc -w $(ARCH) $(OPTIONS) -o bin/idct2d_cuda_fft idct2d_cuda_fft.cu
 
+idct_idxst_cuda: idct_idxst_cuda.cu
+	mkdir -p bin
+	nvcc -w $(ARCH) $(OPTIONS) -o bin/idct_idxst_cuda idct_idxst_cuda.cu
+
 clean:
 	rm -rf bin lib

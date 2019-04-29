@@ -56,6 +56,8 @@ def gen_output_2d(test_case="test_2d.dat"):
     idcct2(x, M, N)
     idcst2(x, M, N)
     idsct2(x, M, N)
+    idxst_idct(x, M, N)
+    idct_idxst(x, M, N)
 
 
 def dct_1d(test_case="test_1d.dat"):
