@@ -1,3 +1,4 @@
 .vscode/*
 src/bin/*
 src/*.dat
+*.pyc

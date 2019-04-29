@@ -12,9 +12,10 @@ import scipy
 from scipy import fftpack
 import numpy as np
 import random
+from dct.src import discrete_spectral_transform
 
 
-def gen_testcase_1d(N=512**2, dim=1):
+def gen_input_1d(N=512**2, dim=1):
     if(dim == 1):
         x = torch.empty(N, dtype=torch.float64).uniform_(0, 10.0)
         with open("test_1d.dat", "w") as f:
@@ -23,7 +24,7 @@ def gen_testcase_1d(N=512**2, dim=1):
                 f.write("{}\n".format(x[i]))
 
 
-def gen_testcase_2d(M=512, N=512, dim=1):
+def gen_input_2d(M=512, N=512, dim=1):
     if(dim == 1):
         x = torch.empty(M, N, dtype=torch.float64).uniform_(0, 10.0)
         # x = torch.Tensor(np.array([[random.randint(0,M-1) for j in range(N)] for i in range(M)])).to(torch.float64)
@@ -33,6 +34,22 @@ def gen_testcase_2d(M=512, N=512, dim=1):
             f.write("{}\n".format(N))
             for i in range(M*N):
                 f.write("{}\n".format(x[i]))
+
+
+def gen_output_2d(test_case="test_2d.dat"):
+    with open(test_case, "r") as f:
+        lines = f.readlines()
+        M = int(lines[0].strip())
+        N = int(lines[1].strip())
+        x = np.resize(np.array([float(i)
+                                for i in lines[2:]]).astype(np.float64), [M, N])
+
+    x = torch.Tensor(x).to(torch.float64)
+    dct_2d(x, M, N)
+    idct_2d(x, M, N)
+    idcct2(x, M, N)
+    idcst2(x, M, N)
+    idsct2(x, M, N)
 
 
 def dct_1d(test_case="test_1d.dat"):
@@ -53,22 +70,50 @@ def dct_1d(test_case="test_1d.dat"):
             f.write("{}\n".format(y[i]))
 
 
-def dct_2d(test_case="test_2d.dat"):
-    runs = 2
-    with open(test_case, "r") as f:
-        lines = f.readlines()
-        M = int(lines[0].strip())
-        N = int(lines[1].strip())
-        x = np.resize(np.array([float(i)
-                                for i in lines[2:]]).astype(np.float64), [M, N])
-
-    tt = time.time()
-    for i in range(runs):
-        y = fftpack.dct(fftpack.dct(x.T, norm=None).T/N, norm=None)/M
-    print("CPU: scipy takes %.3f ms" % ((time.time()-tt)/runs*1000))
-
+def dct_2d(x, M, N):
+    y = discrete_spectral_transform.dct2_2N(x).numpy()
     y = np.resize(y, [M*N])
     with open("result_2d.dat", "w") as f:
+        f.write("{}\n".format(M))
+        f.write("{}\n".format(N))
+        for i in range(M*N):
+            f.write("{}\n".format(y[i]))
+
+
+def idct_2d(x, M, N):
+    y = discrete_spectral_transform.idct2_N(x).numpy()
+    y = np.resize(y, [M*N])
+    with open("idct_2d_result.dat", "w") as f:
+        f.write("{}\n".format(M))
+        f.write("{}\n".format(N))
+        for i in range(M*N):
+            f.write("{}\n".format(y[i]))
+
+
+def idcct2(x, M, N):
+    y = discrete_spectral_transform.idcct2(x).numpy()
+    y = np.resize(y, [M*N])
+    with open("idcct2_result.dat", "w") as f:
+        f.write("{}\n".format(M))
+        f.write("{}\n".format(N))
+        for i in range(M*N):
+            f.write("{}\n".format(y[i]))
+
+
+def idcst2(x, M, N):
+    y = discrete_spectral_transform.idcst2(x).numpy()
+    y = np.resize(y, [M*N])
+    with open("idcst2_result.dat", "w") as f:
+        f.write("{}\n".format(M))
+        f.write("{}\n".format(N))
+        for i in range(M*N):
+            f.write("{}\n".format(y[i]))
+
+
+def idsct2(x, M, N):
+    y = discrete_spectral_transform.idsct2(x).numpy()
+    y = np.resize(y, [M*N])
+    with open("idsct2_result.dat", "w") as f:
         f.write("{}\n".format(M))
         f.write("{}\n".format(N))
         for i in range(M*N):
@@ -106,5 +151,5 @@ def fft_2d(test_case="test_2d_fft.dat"):
 
 
 if __name__ == "__main__":
-    gen_testcase_2d(M=1024, N=1024)
-    dct_2d()
+    # gen_input_2d(M=1024, N=1024)
+    gen_output_2d()
