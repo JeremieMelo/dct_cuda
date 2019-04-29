@@ -101,9 +101,7 @@ def idct2d_idcct2(x, M, N, first_row, first_column):
     y = discrete_spectral_transform.idct2_N(x).numpy()
     y = np.resize(y, [M*N])
     row = discrete_spectral_transform.idct_N(first_row).numpy()
-    row = np.resize(row, [N])
     column = discrete_spectral_transform.idct_N(first_column).numpy()
-    column = np.resize(column, [M])
     with open("idct2d_idcct2.dat", "w") as f:
         f.write("{}\n".format(M))
         f.write("{}\n".format(N))
@@ -138,6 +136,26 @@ def idsct2(x, M, N):
     y = discrete_spectral_transform.idsct2(x).numpy()
     y = np.resize(y, [M*N])
     with open("idsct2_result.dat", "w") as f:
+        f.write("{}\n".format(M))
+        f.write("{}\n".format(N))
+        for i in range(M*N):
+            f.write("{}\n".format(y[i]))
+
+
+def idxst_idct(x, M, N):
+    y = discrete_spectral_transform.idxst_idct(x).numpy()
+    y = np.resize(y, [M*N])
+    with open("idxst_idct.dat", "w") as f:
+        f.write("{}\n".format(M))
+        f.write("{}\n".format(N))
+        for i in range(M*N):
+            f.write("{}\n".format(y[i]))
+
+
+def idct_idxst(x, M, N):
+    y = discrete_spectral_transform.idct_idxst(x).numpy()
+    y = np.resize(y, [M*N])
+    with open("idct_idxst.dat", "w") as f:
         f.write("{}\n".format(M))
         f.write("{}\n".format(N))
         for i in range(M*N):
