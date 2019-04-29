@@ -307,6 +307,7 @@ __global__ __launch_bounds__(TPB *TPB, 10) void idxst_idct_preprocess(const T *i
             output[wid].x = 0;
             output[wid].y = 0;
 
+            TComplex tmp_up;
             T tmp1 = input[INDEX(halfM, wid, N)];
             T tmp2 = input[INDEX(halfM, N - wid, N)];
             tmp_up.x = tmp1 - tmp2;
