@@ -122,27 +122,23 @@ __global__ void idct_idxst_postprocess(const T *x, T *y, const int M, const int 
         {
         case 0:
             index = INDEX(((M - hid) << 1) - 1, ((N - wid) << 1) - 1, N);
+            y[index] = -0.5 * x[INDEX(hid, wid, N)];
             break;
         case 1:
             index = INDEX(((M - hid) << 1) - 1, wid << 1, N);
+            y[index] = 0.5 * x[INDEX(hid, wid, N)];
             break;
         case 2:
             index = INDEX(hid << 1, ((N - wid) << 1) - 1, N);
+            y[index] = -0.5 * x[INDEX(hid, wid, N)];
             break;
         case 3:
             index = INDEX(hid << 1, wid << 1, N);
+            y[index] = 0.5 * x[INDEX(hid, wid, N)];
             break;
         default:
             assert(0);
             break;
-        }
-        if ((wid & 1) == 0)
-        {
-            y[index] = 0.5 * x[INDEX(hid, wid, N)];
-        }
-        else
-        {
-            y[index] = -0.5 * x[INDEX(hid, wid, N)];
         }
     }
 }
