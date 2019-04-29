@@ -374,10 +374,11 @@ void ifft2D(cufftComplex *d_x, cufftReal *d_y, const int M, const int N, cufftHa
 }
 
 template <typename T, typename TReal = cufftDoubleReal, typename TComplex = cufftDoubleComplex>
-void dct_2d_fft(const T *h_x, T *h_y, const int M, const int N)
+void idct_2d_fft(const T *h_x, T *h_y, const int M, const int N)
 {
     T *d_x;
     T *d_y;
+    T *ifft_result;
     TComplex *scratch;
     TComplex *expkM, *expkN;
 
@@ -390,6 +391,7 @@ void dct_2d_fft(const T *h_x, T *h_y, const int M, const int N)
     size_t size = M * N * sizeof(T);
     checkCUDA(cudaMalloc((void **)&d_x, size));
     checkCUDA(cudaMalloc((void **)&d_y, size));
+    checkCUDA(cudaMalloc((void **)&ifft_result, size));
     checkCUDA(cudaMalloc((void **)&expkM, M * sizeof(TComplex)));
     checkCUDA(cudaMalloc((void **)&expkN, (N / 2 + 1) * sizeof(TComplex)));
     checkCUDA(cudaMalloc((void **)&scratch, M * (N / 2 + 1) * sizeof(TComplex)));
@@ -408,9 +410,9 @@ void dct_2d_fft(const T *h_x, T *h_y, const int M, const int N)
     idct2d_preprocess<T, TComplex><<<gridSize2, blockSize>>>(d_x, scratch, M, N, M / 2, N / 2, expkM, expkN);
     cudaDeviceSynchronize();
 
-    ifft2D(scratch, d_x, M, N, plan);
+    ifft2D(scratch, ifft_result, M, N, plan);
 
-    idct2d_postprocess<T><<<gridSize, blockSize>>>(d_x, d_y, M, N, N / 2);
+    idct2d_postprocess<T><<<gridSize, blockSize>>>(ifft_result, d_y, M, N, N / 2);
     cudaDeviceSynchronize();
     timer_stop = get_globaltime();
 
@@ -418,6 +420,7 @@ void dct_2d_fft(const T *h_x, T *h_y, const int M, const int N)
 
     cudaFree(d_x);
     cudaFree(d_y);
+    cudaFree(ifft_result);
     cudaFree(scratch);
     cudaFree(expkM);
     cudaFree(expkN);
@@ -517,7 +520,7 @@ int main()
     double total_time = 0;
     for (int i = 0; i < NUM_RUNS; ++i)
     {
-        dct_2d_fft<dtype, dtypeReal, dtypeComplex>(h_x, h_y, M, N);
+        idct_2d_fft<dtype, dtypeReal, dtypeComplex>(h_x, h_y, M, N);
         int flag = validate2D<dtype>(h_y, h_gt, M, N);
         if (!flag)
         {

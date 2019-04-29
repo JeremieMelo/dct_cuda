@@ -44,9 +44,15 @@ def gen_output_2d(test_case="test_2d.dat"):
         x = np.resize(np.array([float(i)
                                 for i in lines[2:]]).astype(np.float64), [M, N])
 
+    first_row = x[0, :]
+    first_column = x[:, 0]
     x = torch.Tensor(x).to(torch.float64)
+    first_row = torch.Tensor(first_row).to(torch.float64)
+    first_column = torch.Tensor(first_column).to(torch.float64)
+
     dct_2d(x, M, N)
     idct_2d(x, M, N)
+    idct2d_idcct2(x, M, N, first_row, first_column)
     idcct2(x, M, N)
     idcst2(x, M, N)
     idsct2(x, M, N)
@@ -88,6 +94,24 @@ def idct_2d(x, M, N):
         f.write("{}\n".format(N))
         for i in range(M*N):
             f.write("{}\n".format(y[i]))
+
+
+# use idct_2d to calculate idcct2
+def idct2d_idcct2(x, M, N, first_row, first_column):
+    y = discrete_spectral_transform.idct2_N(x).numpy()
+    y = np.resize(y, [M*N])
+    row = discrete_spectral_transform.idct_N(first_row).numpy()
+    row = np.resize(row, [N])
+    column = discrete_spectral_transform.idct_N(first_column).numpy()
+    column = np.resize(column, [M])
+    with open("idct2d_idcct2.dat", "w") as f:
+        f.write("{}\n".format(M))
+        f.write("{}\n".format(N))
+        for i in range(M*N):
+            row_id = i % N
+            column_id = i // N
+            result = (y[i] + row[row_id] + column[column_id] + x[0][0]) / 4
+            f.write("{}\n".format(result))
 
 
 def idcct2(x, M, N):
