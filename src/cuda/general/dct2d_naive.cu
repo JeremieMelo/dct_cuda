@@ -15,39 +15,12 @@
 #include <thrust/scan.h>
 #include <thrust/iterator/counting_iterator.h>
 #include <thrust/iterator/transform_iterator.h>
+#include "../utils/cuda_utils.cuh"
 
-#define PI (3.141592653589793238462643383279502884197169399375105820974944592307816406286208998628034825342117067982148086513282306647093844609550582231725359408128481)
 #define TPB (32)
 #define epsilon (1e-2)
 #define NUM_RUNS (10)
 typedef double dtype;
-
-#define checkCUDA(status)                       \
-    {                                           \
-        if (status != cudaSuccess)              \
-        {                                       \
-            printf("CUDA Runtime Error: %s\n",  \
-                   cudaGetErrorString(status)); \
-            assert(status == cudaSuccess);      \
-        }                                       \
-    }
-
-typedef std::chrono::high_resolution_clock::rep hr_clock_rep;
-
-inline hr_clock_rep get_globaltime(void)
-{
-    using namespace std::chrono;
-    return high_resolution_clock::now().time_since_epoch().count();
-}
-
-// Returns the period in miliseconds
-inline double get_timer_period(void)
-{
-    using namespace std::chrono;
-    return 1000.0 * high_resolution_clock::period::num / high_resolution_clock::period::den;
-}
-
-hr_clock_rep timer_start, timer_stop;
 
 // convert a linear index to a linear index in the transpose
 struct transpose_index : public thrust::unary_function<size_t, size_t>
@@ -189,6 +162,7 @@ __global__ void dct_2d_naive_kernel(const T *x, T *y, const int M, const int N)
     }
 }
 
+CpuTimer Timer;
 template <typename T>
 void dct_2d_naive(
     const T *h_x,
@@ -209,7 +183,9 @@ void dct_2d_naive(
     dim3 blockSize(TPB, TPB, 1);
     dim3 gridSize1((N + TPB - 1) / TPB, (M + TPB - 1) / TPB, 1);
     dim3 gridSize2((M + TPB - 1) / TPB, (N + TPB - 1) / TPB, 1);
-    timer_start = get_globaltime();
+    
+    cudaDeviceSynchronize();
+    Timer.Start();
 
     #if 1
     dct_2d_kernel_transpose_1<<<gridSize1, blockSize>>>(d_x, d_y, M, N);
@@ -222,7 +198,7 @@ void dct_2d_naive(
     #endif
 
     cudaDeviceSynchronize();
-    timer_stop = get_globaltime();
+    Timer.Stop();
 
     cudaMemcpy(h_y, d_x, size, cudaMemcpyDeviceToHost);
     cudaFree(d_x);
@@ -251,37 +227,23 @@ int validate2D(T *result_cuda, T *result_gt, const int M, const int N)
     {
         for (int j = 0; j < N; ++j)
         {
-            int flag = (std::abs(result_cuda[i * N + j] - result_gt[i * N + j]) / std::abs(result_gt[i * N + j])) < epsilon;
+            int flag;
+            if (std::abs(result_gt[i * N + j]) < 1e-6)
+            {
+                flag = (std::abs(result_cuda[i * N + j] - result_gt[i * N + j])) < epsilon / 100.;
+            }
+            else
+            {
+                flag = (std::abs(result_cuda[i * N + j] - result_gt[i * N + j]) / std::abs(result_gt[i * N + j])) < epsilon;
+            }
             if (flag == 0)
             {
-                // printf("cuda_res[%d][%d]: %f, gt_res[%d][%d]: %f\n", i, j, result_cuda[i*N+j], i, j, result_gt[i*N+j]);
+                printf("cuda_res[%d][%d]: %f, gt_res[%d][%d]: %f\n", i, j, result_cuda[i * N + j], i, j, result_gt[i * N + j]);
                 return 0;
             }
         }
     }
     return 1;
-}
-
-template <typename T>
-T **allocateMatrix(int M, int N)
-{
-    T **data;
-    data = new T *[M];
-    for (int i = 0; i < M; i++)
-    {
-        data[i] = new T[N];
-    }
-    return data;
-}
-
-template <typename T>
-void destroyMatrix(T **&data, int M)
-{
-    for (int i = 0; i < M; i++)
-    {
-        delete[] data[i];
-    }
-    delete[] data;
 }
 
 template <typename T>
@@ -341,8 +303,8 @@ int main()
                 printf("index: %d, result: %f, GT: %f, scale: %f\n", i, h_y[i], h_gt[i], h_y[i] / h_gt[i]);
             }
         }
-        printf("[D] dct 2D takes %g ms\n", (timer_stop - timer_start) * get_timer_period());
-        total_time += i > 0 ? (timer_stop - timer_start) * get_timer_period() : 0;
+        printf("[D] dct 2D takes %g ms\n", Timer.ElapsedMillis());
+        total_time += i > 0 ? Timer.ElapsedMillis() : 0;
     }
     printf("[D] dct 2D (%d * %d) takes average %g ms\n", M, N, total_time / (NUM_RUNS - 1));
 

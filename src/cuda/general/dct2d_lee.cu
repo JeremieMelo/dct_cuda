@@ -8,102 +8,12 @@
 #include <fstream>
 #include <assert.h>
 #include <cublas_v2.h>
+#include "../utils/cuda_utils.cuh"
 
-#define PI (3.141592653589793238462643383279502884197169399375105820974944592307816406286208998628034825342117067982148086513282306647093844609550582231725359408128481)
 #define TPB (1024)
 #define epsilon (1e-2) //relative error
 #define NUM_RUNS (101)
 typedef double dtype;
-
-#define checkCUDA(status)                       \
-    {                                           \
-        if (status != cudaSuccess)              \
-        {                                       \
-            printf("CUDA Runtime Error: %s\n",  \
-                   cudaGetErrorString(status)); \
-            assert(status == cudaSuccess);      \
-        }                                       \
-    }
-
-typedef std::chrono::high_resolution_clock::rep hr_clock_rep;
-
-inline hr_clock_rep get_globaltime(void)
-{
-    using namespace std::chrono;
-    return high_resolution_clock::now().time_since_epoch().count();
-}
-
-// Returns the period in miliseconds
-inline double get_timer_period(void)
-{
-    using namespace std::chrono;
-    return 1000.0 * high_resolution_clock::period::num / high_resolution_clock::period::den;
-}
-
-hr_clock_rep timer_start, timer_stop;
-
-/// Return true if a number is power of 2
-template <typename T = unsigned>
-inline bool isPowerOf2(T val)
-{
-    return val && (val & (val - 1)) == 0;
-}
-
-template <typename T>
-inline __device__ __host__ void swap(T &x, T &y)
-{
-    T tmp = x;
-    x = y;
-    y = tmp;
-}
-
-inline __device__ __host__ int LogBase2(uint64_t n)
-{
-    static const int table[64] = {
-        0, 58, 1, 59, 47, 53, 2, 60, 39, 48, 27, 54, 33, 42, 3, 61,
-        51, 37, 40, 49, 18, 28, 20, 55, 30, 34, 11, 43, 14, 22, 4, 62,
-        57, 46, 52, 38, 26, 32, 41, 50, 36, 17, 19, 29, 10, 13, 21, 56,
-        45, 25, 31, 35, 16, 9, 12, 44, 24, 15, 8, 23, 7, 6, 5, 63};
-
-    n |= n >> 1;
-    n |= n >> 2;
-    n |= n >> 4;
-    n |= n >> 8;
-    n |= n >> 16;
-    n |= n >> 32;
-
-    return table[(n * 0x03f6eaf2cd271461) >> 58];
-}
-
-/**********************/
-/* cuBLAS ERROR CHECK */
-/**********************/
-#ifndef cublasSafeCall
-#define cublasSafeCall(err) __cublasSafeCall(err, __FILE__, __LINE__)
-#endif
-
-inline void __cublasSafeCall(cublasStatus_t err, const char *file, const int line)
-{
-    if (CUBLAS_STATUS_SUCCESS != err)
-    {
-        fprintf(stderr, "CUBLAS error in file '%s', line %d\n \nerror %d \nterminating!\n", __FILE__, __LINE__, err);
-        getchar();
-        cudaDeviceReset();
-        assert(0);
-    }
-}
-
-template <typename T>
-inline void transpose(T *&src_ptr, T *&dst, const int M, const int N)
-{
-    T alpha = 1.;
-    T beta = 0.;
-    const double *src = (const double *)src_ptr;
-    cublasHandle_t handle;
-    cublasSafeCall(cublasCreate(&handle));
-    cublasSafeCall(cublasDgeam(handle, CUBLAS_OP_T, CUBLAS_OP_T, M, N, &alpha, src, N, &beta, src, N, dst, M));
-    cublasDestroy(handle);
-}
 
 /// Precompute cosine values needed for N-point dct
 /// @param  cos  size N - 1 buffer on GPU, contains the result after function call
@@ -168,7 +78,7 @@ void precompute_dct_cos(TValue *cos, int N)
         printf("Input length is not power of 2.\n");
         assert(0);
     }
-    timer_start = get_globaltime();
+    
 
     // create the array on host
     TValue *cos_host = new TValue[N];
@@ -206,8 +116,6 @@ void precompute_dct_cos(TValue *cos, int N)
     cudaMemcpy(cos, cos_host, N * sizeof(TValue), cudaMemcpyHostToDevice);
 
     delete[] cos_host;
-    timer_stop = get_globaltime();
-    printf("[D] precompute cos takes %g ms\n", (timer_stop - timer_start) * get_timer_period());
 }
 
 template <typename TValue, typename TIndex>
@@ -609,6 +517,8 @@ void dct_transpose_normalize(const TValue *vec, TValue *out, const TValue *cos, 
     dct_transpose_normalize_kernel<TValue, int><<<gridSize, blockSize, shared_memory_size>>>(vec, out, cos, M, N);
 }
 
+CpuTimer Timer;
+
 template <typename T>
 void dct_2d_lee(
     const T *h_x,
@@ -645,7 +555,7 @@ void dct_2d_lee(
     precompute_dct_cos_kernel<T><<<(M + TPB - 1) / TPB, TPB, 0, streams[1]>>>(d_cos1, M, (int)log2(M));
     cudaDeviceSynchronize();
 
-    timer_start = get_globaltime();
+    Timer.Start();
     #if 1
     dct_transpose<T>(d_x, scratch, d_cos0, M, N);
     dct_transpose<T>(scratch, d_y, d_cos1, N, M);
@@ -666,7 +576,7 @@ void dct_2d_lee(
     #endif
 
     cudaDeviceSynchronize();
-    timer_stop = get_globaltime();
+    Timer.Stop();
 
     cudaMemcpy(h_y, d_y, size, cudaMemcpyDeviceToHost);
 
@@ -684,37 +594,23 @@ int validate2D(T *result_cuda, T *result_gt, const int M, const int N)
     {
         for (int j = 0; j < N; ++j)
         {
-            int flag = (std::abs(result_cuda[i * N + j] - result_gt[i * N + j]) / std::abs(result_gt[i * N + j])) < epsilon;
+            int flag;
+            if (std::abs(result_gt[i * N + j]) < 1e-6)
+            {
+                flag = (std::abs(result_cuda[i * N + j] - result_gt[i * N + j])) < epsilon / 100.;
+            }
+            else
+            {
+                flag = (std::abs(result_cuda[i * N + j] - result_gt[i * N + j]) / std::abs(result_gt[i * N + j])) < epsilon;
+            }
             if (flag == 0)
             {
-                // printf("cuda_res[%d][%d]: %f, gt_res[%d][%d]: %f\n", i, j, result_cuda[i*N+j], i, j, result_gt[i*N+j]);
+                printf("cuda_res[%d][%d]: %f, gt_res[%d][%d]: %f\n", i, j, result_cuda[i * N + j], i, j, result_gt[i * N + j]);
                 return 0;
             }
         }
     }
     return 1;
-}
-
-template <typename T>
-T **allocateMatrix(int M, int N)
-{
-    T **data;
-    data = new T *[M];
-    for (int i = 0; i < M; i++)
-    {
-        data[i] = new T[N];
-    }
-    return data;
-}
-
-template <typename T>
-void destroyMatrix(T **&data, int M)
-{
-    for (int i = 0; i < M; i++)
-    {
-        delete[] data[i];
-    }
-    delete[] data;
 }
 
 template <typename T>
@@ -772,8 +668,8 @@ int main()
                 printf("index: %d, result: %f, GT: %f\n", i, h_y[i], h_gt[i]);
             }
         }
-        printf("[D] dct 2D takes %g ms\n", (timer_stop - timer_start) * get_timer_period());
-        total_time += (timer_stop - timer_start) * get_timer_period();
+        printf("[D] dct 2D takes %g ms\n", Timer.ElapsedMillis());
+        total_time += i > 0 ? Timer.ElapsedMillis() : 0;
     }
 
     printf("[D] dct 2D (%d * %d) takes average %g ms\n", M, N, total_time / NUM_RUNS);

@@ -7,71 +7,12 @@
 #include <string>
 #include <fstream>
 #include <assert.h>
+#include "../utils/cuda_utils.cuh"
 
-#define PI (3.141592653589793238462643383279502884197169399375105820974944592307816406286208998628034825342117067982148086513282306647093844609550582231725359408128481)
 #define TPB (32)
 #define epsilon (1e-2)
 #define NUM_RUNS (5)
 #define DEBUG
-
-#define checkCUDA(status) \
-{\
-	if (status != cudaSuccess) { \
-		printf("CUDA Runtime Error: %s\n", \
-			cudaGetErrorString(status)); \
-		assert(status == cudaSuccess); \
-	} \
-}
-
-typedef std::chrono::high_resolution_clock::rep hr_clock_rep;
-
-inline hr_clock_rep get_globaltime(void)
-{
-	using namespace std::chrono;
-	return high_resolution_clock::now().time_since_epoch().count();
-}
-
-// Returns the period in miliseconds
-inline double get_timer_period(void)
-{
-	using namespace std::chrono;
-	return 1000.0 * high_resolution_clock::period::num / high_resolution_clock::period::den;
-}
-
-hr_clock_rep timer_start, timer_stop;
-
-/// Return true if a number is power of 2
-template <typename T = unsigned>
-inline bool isPowerOf2(T val)
-{
-    return val && (val & (val - 1)) == 0;
-}
-
-template <typename T>
-inline void swap(T& x, T& y)
-{
-    T tmp = x; 
-    x = y; 
-    y = tmp; 
-}
-
-inline __device__ __host__ int LogBase2(uint64_t n)
-{
-    static const int table[64] = {
-        0, 58, 1, 59, 47, 53, 2, 60, 39, 48, 27, 54, 33, 42, 3, 61,
-        51, 37, 40, 49, 18, 28, 20, 55, 30, 34, 11, 43, 14, 22, 4, 62,
-        57, 46, 52, 38, 26, 32, 41, 50, 36, 17, 19, 29, 10, 13, 21, 56,
-        45, 25, 31, 35, 16, 9, 12, 44, 24, 15, 8, 23, 7, 6, 5, 63 };
-
-    n |= n >> 1;
-    n |= n >> 2;
-    n |= n >> 4;
-    n |= n >> 8;
-    n |= n >> 16;
-    n |= n >> 32;
-
-    return table[(n * 0x03f6eaf2cd271461) >> 58];
-}
 
 /// Precompute cosine values needed for N-point dct
 /// @param  cos  size N - 1 buffer on GPU, contains the result after function call
@@ -135,7 +76,7 @@ void precompute_dct_cos(TValue *cos, int N)
         printf("Input length is not power of 2.\n");
         assert(0); 
     }
-    timer_start = get_globaltime();
+  
 
     // create the array on host 
     TValue* cos_host = new TValue [N]; 
@@ -174,8 +115,6 @@ void precompute_dct_cos(TValue *cos, int N)
      
 
     delete [] cos_host; 
-    timer_stop = get_globaltime();
-    printf("[D] precompute cos takes %g ms\n", (timer_stop-timer_start)*get_timer_period());
 }
 
 template <typename TValue, typename TIndex>
@@ -321,6 +260,8 @@ __global__ void dct_1d_lee_kernel(const T* x, T* y, const int N)
 
 }
 
+CpuTimer Timer;
+
 template <typename T>
 void dct_1d_lee(
         const T *h_x,
@@ -343,11 +284,14 @@ void dct_1d_lee(
 
     cudaMemcpy(d_x, h_x, size, cudaMemcpyHostToDevice);
     
+    
     // precompute_dct_cos<T>(d_cos, N);
     precompute_dct_cos_kernel<T><<<gridSize, blockSize>>>(d_cos, N, (int)log2(N));
     cudaDeviceSynchronize();
+    Timer.Start();
     dct_ref<T>(d_x, d_y, scratch, d_cos, N);
     cudaDeviceSynchronize();
+    Timer.Stop();
     cudaMemcpy(h_y, d_y, size, cudaMemcpyDeviceToHost);
 
     cudaFree(d_x);
@@ -410,32 +354,24 @@ int main()
     int N = load_data<dtype>(h_x, h_gt);
     h_y = new dtype[N];
     
-
-    for(int i = 0;i<10;++i)
-    {
-        printf("%d: %f\n", i, h_x[i]);
-    }
     double total_time = 0;
-    for(int i=0; i<NUM_RUNS; ++i)
+    for (int i = 0; i < NUM_RUNS; ++i)
     {
-        timer_start = get_globaltime();
         dct_1d_lee<dtype>(h_x, h_y, N);
-        timer_stop = get_globaltime();
         int flag = validate<dtype>(h_y, h_gt, N);
-        printf("[I] validation: %d\n", flag);
-        printf("[D] dct 1D takes %g ms\n", (timer_stop-timer_start)*get_timer_period());
-        total_time += (timer_stop-timer_start)*get_timer_period();
+        if (!flag)
+        {
+            printf("[I] Error! Results are incorrect.\n", flag);
+            for (int i = 0; i < 64; ++i)
+            {
+                printf("index: %d, result: %f, GT: %f, scale: %f\n", i, h_y[i], h_gt[i], h_y[i] / h_gt[i]);
+            }
+        }
+        printf("[D] dct1d_lee takes %g ms\n", Timer.ElapsedMillis());
+        total_time += i > 0 ? Timer.ElapsedMillis() : 0;
     }
-        
-    // int flag = validate<dtype>(h_y, h_gt, N);
-    // printf("[D] dct 1D takes %g ms\n", (timer_stop-timer_start)*get_timer_period());
-    printf("[D] dct 1D takes average %g ms\n", total_time/NUM_RUNS);
-    // printf("[I] validation: %d\n", flag);
-    
-    for(int i = 0;i<10;++i)
-    {
-        printf("%d: %f\n", i, h_y[i]);
-    }
+
+    printf("[D] dct1d_lee (%d) takes average %g ms\n", N, total_time / (NUM_RUNS - 1));
 
     delete [] h_x;
     delete [] h_y;

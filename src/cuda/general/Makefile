@@ -8,7 +8,7 @@ OPTIONS=-O3 -use_fast_math -lcurand -Xcompiler -Wall -lcublas -lcufft -prec-div=
 
 all: dct1d_lee dct2d_naive dct2d_lee dct2d_fft idct2d_fft idct_idxst idxst_idct
 
-dct1d_lee: dct1d_lee.cu
+dct1d_lee: dct1d_lee.cu 
 	mkdir -p $(BIN_DIR)
 	nvcc -w $(ARCH) $(OPTIONS) -o $(BIN_DIR)/$@ $<
 
@@ -22,7 +22,7 @@ dct2d_lee: dct2d_lee.cu
 
 dct2d_fft: dct2d_fft.cu
 	mkdir -p $(BIN_DIR)
-	nvcc -w $(ARCH) $(OPTIONS) -o $(BIN_DIR)/$@ $<
+	nvcc -w $(ARCH) $(OPTIONS) -o $(BIN_DIR)/$@ $< 
 
 idct2d_fft: idct2d_fft.cu
 	mkdir -p $(BIN_DIR)

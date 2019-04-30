@@ -1,7 +1,7 @@
 /*
  * @Author: Jake Gu
  * @Date: 2019-04-02 16:34:45
- * @LastEditTime: 2019-04-23 15:46:17
+ * @LastEditTime: 2019-04-29 21:12:16
  */
 /**
  * @file   dct.cpp
@@ -406,5 +406,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("idct_2N", &idct_2N_forward, "IDCT forward");
   m.def("dct2_2N", &dct2_2N_forward, "DCT2 forward");
   m.def("idct2_2N", &idct2_2N_forward, "IDCT2 forward");
+
 }
 

@@ -1,3 +1,10 @@
+#!/usr/bin/env python
+# coding=UTF-8
+'''
+@Author: Jake Gu
+@Date: 2019-04-29 20:56:42
+@LastEditTime: 2019-04-29 21:01:34
+'''
 ##
 # @file   setup.py.in
 # @author Yibo Lin
@@ -45,6 +52,11 @@ if not "${CUDA_FOUND}" or "${CUDA_FOUND}".upper() == 'TRUE':
                     add_prefix('dct_lee_cuda_kernel.cu'), 
                     add_prefix('dct_cuda_kernel.cu'),
                     add_prefix('dst_cuda_kernel.cu')
+                    ]),
+            CUDAExtension('dct2_fft2d_cuda', 
+                [
+                    add_prefix('dct2_fft2d_cuda.cpp'),
+                    add_prefix('dct2_fft2d_cuda_kernel.cu')
                     ]),
         ])
 

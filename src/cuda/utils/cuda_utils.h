@@ -1,7 +1,7 @@
 /*
  * @Author: Jake Gu
  * @Date: 2019-04-21 14:50:47
- * @LastEditTime: 2019-04-29 11:23:23
+ * @LastEditTime: 2019-04-29 21:36:48
  */
 #ifndef __CUDA_UTILS_H__
 #define __CUDA_UTILS_H__
@@ -248,6 +248,44 @@ inline __device__ cufftComplex complexConj(const cufftComplex &x)
     res.x = x.x;
     res.y = -1 * x.y;
     return res;
+}
+
+inline __device__ cufftDoubleComplex complexMulConj(const cufftDoubleComplex &x, const cufftDoubleComplex &y)
+{
+    cufftDoubleComplex res;
+    res.x = x.x * y.x - x.y * y.y;
+    res.y = -1 * (x.x * y.y + x.y * y.x);
+    return res;
+}
+
+inline __device__ cufftComplex complexMulConj(const cufftComplex &x, const cufftComplex &y)
+{
+    cufftComplex res;
+    res.x = x.x * y.x - x.y * y.y;
+    res.y = -1 * (x.x * y.y + x.y * y.x);
+    return res;
+}
+
+template <typename T>
+T **allocateMatrix(int M, int N)
+{
+    T **data;
+    data = new T *[M];
+    for (int i = 0; i < M; i++)
+    {
+        data[i] = new T[N];
+    }
+    return data;
+}
+
+template <typename T>
+void destroyMatrix(T **&data, int M)
+{
+    for (int i = 0; i < M; i++)
+    {
+        delete[] data[i];
+    }
+    delete[] data;
 }
 
 #ifdef CUBLAS

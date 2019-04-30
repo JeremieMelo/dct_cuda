@@ -1,3 +1,10 @@
+#!/usr/bin/env python
+# coding=UTF-8
+'''
+@Author: Jake Gu
+@Date: 2019-04-02 16:34:45
+@LastEditTime: 2019-04-29 21:10:28
+'''
 ##
 # @file   dct_lee.py
 # @author Yibo Lin

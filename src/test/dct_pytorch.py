@@ -3,8 +3,10 @@
 '''
 @Author: Jake Gu
 @Date: 2019-04-15 19:19:32
-@LastEditTime: 2019-04-29 11:15:14
+@LastEditTime: 2019-04-29 22:23:41
 '''
+import sys
+sys.path.append('..')
 import torch
 from torch.autograd import Function, Variable
 import time
@@ -195,5 +197,7 @@ def fft_2d(test_case="test_2d_fft.dat"):
 
 
 if __name__ == "__main__":
-    gen_input_2d(M=1024, N=1024)
+    gen_input_2d(M=256, N=256)
     gen_output_2d()
+    # gen_input_1d(1024)
+    # dct_1d()
