@@ -445,7 +445,7 @@ def eval_runtime():
     # print(dct_N(x))
 
     N = 4096
-    runs = 1
+    runs = 100
     # x = torch.empty(10, N, N, dtype=torch.float64).uniform_(0, 10.0).cuda()
     with open("../result_2d.dat", "r") as f:
         lines = f.readlines()
@@ -520,6 +520,8 @@ def eval_runtime():
     print("CUDA: DCT2d_Lee Function takes %.5f ms" % ((time.time()-tt)/runs*1000))
     exit()
     '''
+
+    y_N = discrete_spectral_transform.idct2_2N(x, expk0=expk0, expk1=expk1)
     torch.cuda.synchronize()
     tt = time.time()
     #with torch.autograd.profiler.profile(use_cuda=True) as prof:
@@ -528,9 +530,9 @@ def eval_runtime():
     torch.cuda.synchronize()
     #print(prof)
     print("idct2_2N takes %.5f ms" % ((time.time()-tt)/runs*1000))
-    print(y_N)
 
     idct2func = dct.IDCT2(expk0, expk1, algorithm='2N')
+    y_N = idct2func.forward(x)
     torch.cuda.synchronize()
     tt = time.time()
     #with torch.autograd.profiler.profile(use_cuda=True) as prof:
@@ -539,9 +541,9 @@ def eval_runtime():
     torch.cuda.synchronize()
     #print(prof)
     print("IDCT2_2N Function takes %.5f ms" % ((time.time()-tt)/runs*1000))
-    print(y_N)
 
     idct2func = dct.IDCT2(expk0, expk1, algorithm='N')
+    y_N = idct2func.forward(x)
     torch.cuda.synchronize()
     tt = time.time()
     #with torch.autograd.profiler.profile(use_cuda=True) as prof:
@@ -550,8 +552,8 @@ def eval_runtime():
     torch.cuda.synchronize()
     #print(prof)
     print("IDCT2_N Function takes %.5f ms" % ((time.time()-tt)/runs*1000))
-    print(y_N)
-
+    
+    y_N = discrete_spectral_transform.idxt(x, 1, expk=expk1)
     torch.cuda.synchronize()
     tt = time.time()
     #with torch.autograd.profiler.profile(use_cuda=True) as prof:
@@ -560,9 +562,9 @@ def eval_runtime():
     torch.cuda.synchronize()
     #print(prof)
     print("idxt takes %.5f ms" % ((time.time()-tt)/runs*1000))
-    print(y_N)
 
     idxct_func = dct.IDXST(expk1)
+    y_N = idxct_func.forward(x)
     torch.cuda.synchronize()
     tt = time.time()
     #with torch.autograd.profiler.profile(use_cuda=True) as prof:
@@ -571,8 +573,6 @@ def eval_runtime():
     torch.cuda.synchronize()
     #print(prof)
     print("IDXCT Function takes %.5f ms" % ((time.time()-tt)/runs*1000))
-    print(y_N)
-    exit()
 
     # torch.cuda.synchronize()
     # tt = time.time()
@@ -582,60 +582,66 @@ def eval_runtime():
     # torch.cuda.synchronize()
     # #print(prof)
     # print("torch.rfft2d takes %.5f ms" % ((time.time()-tt)/runs*1000))
-
+    
+    y_N = discrete_spectral_transform.idcct2(x, expk_0=expk0, expk_1=expk1)
     torch.cuda.synchronize()
     tt = time.time()
     #with torch.autograd.profiler.profile(use_cuda=True) as prof:
     for i in range(runs):
-        y_N = discrete_spectral_transform.idcct2(x[i%10], expk_0=expk0, expk_1=expk1)
+        y_N = discrete_spectral_transform.idcct2(x, expk_0=expk0, expk_1=expk1)
     torch.cuda.synchronize()
     #print(prof)
     print("idcct2 takes %.5f ms" % ((time.time()-tt)/runs*1000))
 
     func = dct.IDCCT2(expk0, expk1)
+    y_N = func.forward(x)
     torch.cuda.synchronize()
     tt = time.time()
     #with torch.autograd.profiler.profile(use_cuda=True) as prof:
     for i in range(runs):
-        y_N = func.forward(x[i%10])
+        y_N = func.forward(x)
     torch.cuda.synchronize()
     #print(prof)
     print("IDCCT2 Function takes %.5f ms" % ((time.time()-tt)/runs*1000))
 
+    y_N = discrete_spectral_transform.idcst2(x, expk_0=expk0, expk_1=expk1)
     torch.cuda.synchronize()
     tt = time.time()
     #with torch.autograd.profiler.profile(use_cuda=True) as prof:
     for i in range(runs):
-        y_N = discrete_spectral_transform.idcst2(x[i%10], expk_0=expk0, expk_1=expk1)
+        y_N = discrete_spectral_transform.idcst2(x, expk_0=expk0, expk_1=expk1)
     torch.cuda.synchronize()
     #print(prof)
     print("idcst2 takes %.5f ms" % ((time.time()-tt)/runs*1000))
 
     func = dct.IDCST2(expk0, expk1)
+    y_N = func.forward(x)
     torch.cuda.synchronize()
     tt = time.time()
     #with torch.autograd.profiler.profile(use_cuda=True) as prof:
     for i in range(runs):
-        y_N = func.forward(x[i%10])
+        y_N = func.forward(x)
     torch.cuda.synchronize()
     #print(prof)
     print("IDCST2 Function takes %.5f ms" % ((time.time()-tt)/runs*1000))
 
+    y_N = discrete_spectral_transform.idsct2(x, expk_0=expk0, expk_1=expk1)
     torch.cuda.synchronize()
     tt = time.time()
     #with torch.autograd.profiler.profile(use_cuda=True) as prof:
     for i in range(runs):
-        y_N = discrete_spectral_transform.idsct2(x[i%10], expk_0=expk0, expk_1=expk1)
+        y_N = discrete_spectral_transform.idsct2(x, expk_0=expk0, expk_1=expk1)
     torch.cuda.synchronize()
     #print(prof)
     print("idsct2 takes %.5f ms" % ((time.time()-tt)/runs*1000))
 
     func = dct.IDSCT2(expk0, expk1)
+    y_N = func.forward(x)
     torch.cuda.synchronize()
     tt = time.time()
     #with torch.autograd.profiler.profile(use_cuda=True) as prof:
     for i in range(runs):
-        y_N = func.forward(x[i%10])
+        y_N = func.forward(x)
     torch.cuda.synchronize()
     #print(prof)
     print("IDSCT2 Function takes %.5f ms" % ((time.time()-tt)/runs*1000))
