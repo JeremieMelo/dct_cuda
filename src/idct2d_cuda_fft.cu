@@ -261,7 +261,7 @@ __global__ void precomputeExpk(cufftComplex *expkM, cufftComplex *expkN, const i
     }
 }
 
-__global__ void precomputeExpk_v2(cufftComplex *expkM, cufftComplex *expkN, cufftComplex *expkMN, const int M, const int N)
+__global__ void precomputeExpk_v2(cufftComplex *expkM, cufftComplex *expkN, cufftComplex * expkMN_1, cufftComplex * expkMN_2, const int M, const int N)
 {
     const int tid = blockDim.x * blockIdx.x + threadIdx.x;
     if (tid < M)
@@ -269,10 +269,16 @@ __global__ void precomputeExpk_v2(cufftComplex *expkM, cufftComplex *expkN, cuff
         int hid = tid;
         cufftComplex W_h_4M = make_float2(__cosf((float)PI * hid / (2 * M)), -1 * __sinf((float)PI * hid / (M * 2)));
         expkM[hid] = W_h_4M;
-        cufftComplex W_hw_4M_0 = make_float2(__cosf((float)PI * hid / M), -1 * __sinf((float)PI * hid / M));
-        cufftComplex W_hw_4M_1 = make_float2(__cosf((float)PI * (hid+1/2) / M), -1 * __sinf((float)PI * (hid+1/2) / M));
-        expkMN[2*hid] = W_hw_4M_0;
-        expkMN[2*hid+1] = W_hw_4M_1;
+        // expkMN_1
+        cufftComplex W_h_4M_offset = make_float2(__cosf((float)PI * (hid+M) / (2 * M)), -1 * __sinf((float)PI * (hid+M) / (M * 2)));
+        expkMN_1[hid] = W_h_4M;
+        expkMN_1[hid+M] = W_h_4M_offset;
+
+        //expkMN_2
+        W_h_4M = make_float2(-1 * __sinf((float)PI * (hid-(N-1)) / (M * 2)), -1 * __cosf((float)PI * (hid-(N-1)) / (2 * M)));
+        W_h_4M_offset = make_float2(-1 * __sinf((float)PI * (hid-(N-1)+M) / (M * 2)), -1 * __cosf((float)PI * (hid-(N-1)+M) / (2 * M)));
+        expkMN_2[hid] = W_h_4M;
+        expkMN_2[hid+M] = W_h_4M_offset;
     }
     if (tid <= N / 2)
     {
@@ -282,6 +288,8 @@ __global__ void precomputeExpk_v2(cufftComplex *expkM, cufftComplex *expkN, cuff
     }
 }
 
+/// compute expkM[hid] * expkN[wid] as expkMN_1[hid+wid]; 
+/// compute expkM[M-hid] * expkN[wid] as expkMN_2[wid-hid+N-1];
 __global__ void precomputeExpk_v2(cufftDoubleComplex *expkM, cufftDoubleComplex *expkN, cufftDoubleComplex * expkMN_1, cufftDoubleComplex * expkMN_2, const int M, const int N)
 {
     const int tid = blockDim.x * blockIdx.x + threadIdx.x;
@@ -413,7 +421,7 @@ __global__ __launch_bounds__(TPB *TPB, 10) void idct2d_preprocess_bk(const T *in
 }
 
 template <typename T, typename TComplex>
-__global__ __launch_bounds__(TPB *TPB, 8) void idct2d_preprocess(const T *input, TComplex *output, const int M, const int N,
+__global__ __launch_bounds__(TPB * TPB, 8) void idct2d_preprocess(const T *input, TComplex *output, const int M, const int N,
                                                                   const int halfM, const int halfN,
                                                                   const TComplex *__restrict__ expkM, const TComplex *__restrict__ expkN,
                                                                   const TComplex *__restrict__ expkMN_1,const TComplex *__restrict__ expkMN_2)
@@ -436,17 +444,17 @@ __global__ __launch_bounds__(TPB *TPB, 8) void idct2d_preprocess(const T *input,
             tmp1 = input[halfN];
             tmp_up.x = tmp1;
             tmp_up.y = tmp1;
-            output[halfN] = complexConj(complexMul(expkN[halfN], tmp_up));
+            output[halfN] = complexMulConj(expkN[halfN], tmp_up);
 
             tmp1 = input[INDEX(halfM, 0, N)];
             tmp_up.x = tmp1;
             tmp_up.y = tmp1;
-            output[INDEX(halfM, 0, halfN + 1)] = complexConj(complexMul(expkM[halfM], tmp_up));
+            output[INDEX(halfM, 0, halfN + 1)] = complexMulConj(expkM[halfM], tmp_up);
 
             tmp1 = input[INDEX(halfM, halfN, N)];
             tmp_up.x = 0;
             tmp_up.y = 2 * tmp1;
-            output[INDEX(halfM, halfN, halfN + 1)] = complexConj(complexMul(complexMul(expkM[halfM], expkN[halfN]), tmp_up));
+            output[INDEX(halfM, halfN, halfN + 1)] = complexMulConj(expkMN_1[halfM+halfN], tmp_up);
             break;
         }
 
@@ -455,13 +463,13 @@ __global__ __launch_bounds__(TPB *TPB, 8) void idct2d_preprocess(const T *input,
             TComplex tmp_up;
             tmp_up.x = input[wid];
             tmp_up.y = input[N - wid];
-            output[wid] = complexConj(complexMul(expkN[wid], tmp_up));
+            output[wid] = complexMulConj(expkN[wid], tmp_up);
 
             T tmp1 = input[INDEX(halfM, wid, N)];
             T tmp2 = input[INDEX(halfM, N - wid, N)];
             tmp_up.x = tmp1 - tmp2;
             tmp_up.y = tmp1 + tmp2;
-            output[INDEX(halfM, wid, halfN + 1)] = complexConj(complexMul(complexMul(expkM[halfM], expkN[wid]), tmp_up));
+            output[INDEX(halfM, wid, halfN + 1)] = complexMulConj(expkMN_1[halfM+wid], tmp_up);
             break;
         }
 
@@ -472,14 +480,11 @@ __global__ __launch_bounds__(TPB *TPB, 8) void idct2d_preprocess(const T *input,
 
             tmp1 = input[INDEX(hid, 0, N)];
             tmp3 = input[INDEX(M - hid, 0, N)];
-            // tmp_up.x = tmp1;
-            // tmp_up.y = tmp3;
             tmp_down.x = tmp3;
             tmp_down.y = tmp1;
 
+            // two outputs are conjugate
             tmp_up = complexMul(expkM[M - hid], tmp_down);
-            // output[INDEX(hid, 0, halfN + 1)] = complexConj(complexMul(expkM[hid], tmp_up));
-            // output[INDEX(M - hid, 0, halfN + 1)] = complexConj(complexMul(expkM[M - hid], tmp_down));
             output[INDEX(hid, 0, halfN + 1)] = tmp_up;
             output[INDEX(M - hid, 0, halfN + 1)] = complexConj(tmp_up);
 
@@ -490,10 +495,8 @@ __global__ __launch_bounds__(TPB *TPB, 8) void idct2d_preprocess(const T *input,
             tmp_down.x = tmp3 - tmp1;
             tmp_down.y = tmp1 + tmp3;
 
-            // output[INDEX(hid, halfN, halfN + 1)] = complexConj(complexMul(complexMul(expkM[hid], expkN[halfN]), tmp_up));
-            // output[INDEX(M - hid, halfN, halfN + 1)] = complexConj(complexMul(complexMul(expkM[M - hid], expkN[halfN]), tmp_down));
-            output[INDEX(hid, halfN, halfN + 1)] = complexConj(complexMul(expkMN_1[hid+halfN], tmp_up));
-            output[INDEX(M - hid, halfN, halfN + 1)] = complexConj(complexMul(expkMN_2[halfN-hid+(N-1)], tmp_down));
+            output[INDEX(hid, halfN, halfN + 1)] = complexMulConj(expkMN_1[hid+halfN], tmp_up);
+            output[INDEX(M - hid, halfN, halfN + 1)] = complexMulConj(expkMN_2[halfN-hid+(N-1)], tmp_down);
             break;
         }
 
@@ -508,15 +511,9 @@ __global__ __launch_bounds__(TPB *TPB, 8) void idct2d_preprocess(const T *input,
             tmp_up.y = tmp3 + tmp2;
             tmp_down.x = tmp3 - tmp2;
             tmp_down.y = tmp1 + tmp4;
-            // TComplex expkM_by_expkN = complexMul(expkM[hid], expkN[wid]);
-            // output[INDEX(hid, wid, halfN + 1)] = complexConj(complexMul(complexMul(expkM[hid], expkN[wid]), tmp_up));
-            // output[INDEX(M - hid, wid, halfN + 1)] = complexConj(complexMul(complexMul(expkM[M - hid], expkN[wid]), tmp_down));
-            TComplex expkM_by_expkN_1 = expkMN_1[hid+wid];
-            TComplex expkM_by_expkN_2 = expkMN_2[wid-hid+(N-1)];
-            // output[INDEX(hid, wid, halfN + 1)] = complexConj(complexMul(expkM_by_expkN_1, tmp_up));
-            // output[INDEX(M - hid, wid, halfN + 1)] = complexConj(complexMul(expkM_by_expkN_2, tmp_down));
-            output[INDEX(hid, wid, halfN + 1)] = complexMulConj(expkM_by_expkN_1, tmp_up);
-            output[INDEX(M - hid, wid, halfN + 1)] = complexMulConj(expkM_by_expkN_2, tmp_down);
+
+            output[INDEX(hid, wid, halfN + 1)] = complexMulConj(expkMN_1[hid+wid], tmp_up);
+            output[INDEX(M - hid, wid, halfN + 1)] = complexMulConj(expkMN_2[wid-hid+(N-1)], tmp_down);
             break;
         }
 
