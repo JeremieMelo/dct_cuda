@@ -1,18 +1,6 @@
-#include <cuda.h>
-#include "cuda_runtime.h"
-#include <cmath>
-#include <chrono>
-#include <cstdlib>
-#include <iostream>
-#include <string>
-#include <fstream>
-#include <assert.h>
-#include "../utils/cuda_utils.cuh"
+#include "global.cuh"
 
 #define TPB (32)
-#define epsilon (1e-2)
-#define NUM_RUNS (5)
-#define DEBUG
 
 /// Precompute cosine values needed for N-point dct
 /// @param  cos  size N - 1 buffer on GPU, contains the result after function call
@@ -25,7 +13,8 @@ __global__ void precompute_dct_cos_kernel_backup(TValue *d_cos, int N)
     {
         int sum = N / 2;
         int halfLen = N / 2;
-        while (tid >= sum) {
+        while (tid >= sum)
+        {
             halfLen = halfLen / 2;
             sum += halfLen;
         }
@@ -54,7 +43,7 @@ __global__ void precompute_dct_cos_kernel(TValue *d_cos, int N, int log_N)
         // int len = N / (1 << (total_height - height - 1));
         int len = 1 << (height + 1);
         int i = len - k - 1;
-        
+
         TValue phase = (0.5 + i) * PI / len;
         d_cos[tid] = 0.5 / cos(phase);
     }
@@ -71,15 +60,14 @@ template <typename TValue>
 void precompute_dct_cos(TValue *cos, int N)
 {
     // The input length must be power of 2
-    if (! isPowerOf2<int>(N))
+    if (!isPowerOf2<int>(N))
     {
         printf("Input length is not power of 2.\n");
-        assert(0); 
+        assert(0);
     }
-  
 
-    // create the array on host 
-    TValue* cos_host = new TValue [N]; 
+    // create the array on host
+    TValue *cos_host = new TValue[N];
 
     int offset = 0;
     int halfLen = N / 2;
@@ -110,11 +98,10 @@ void precompute_dct_cos(TValue *cos, int N)
     //     halfLen /= 2;
     // }
 
-    // copy to GPU 
-    cudaMemcpy(cos, cos_host, N*sizeof(TValue), cudaMemcpyHostToDevice);
-     
+    // copy to GPU
+    cudaMemcpy(cos, cos_host, N * sizeof(TValue), cudaMemcpyHostToDevice);
 
-    delete [] cos_host; 
+    delete[] cos_host;
 }
 
 template <typename TValue, typename TIndex>
@@ -146,7 +133,7 @@ __global__ void computeDctForward(const TValue *curr, TValue *next, const TValue
 template <typename TValue, typename TIndex>
 __global__ void computeDctBackward(const TValue *curr, TValue *next, TIndex N, TIndex len, TIndex halfLen)
 {
-    
+
     TIndex halfN = (N >> 1);
     // TIndex halfMN = M * halfN;
     //TIndex halfMN_by_gridDim = halfMN/gridDim.x;
@@ -163,9 +150,11 @@ __global__ void computeDctBackward(const TValue *curr, TValue *next, TIndex N, T
 }
 
 template <typename T>
-__global__ void normalize(T* x, const T* y, const int N){
+__global__ void normalize(T *x, const T *y, const int N)
+{
     int tid = blockDim.x * blockIdx.x + threadIdx.x;
-    if (tid < N) {
+    if (tid < N)
+    {
         x[tid] = y[tid] / N * 2;
     }
 }
@@ -175,34 +164,34 @@ __global__ void normalize(T* x, const T* y, const int N){
 ///
 /// Lee's algorithm has a recursive structure in nature.
 /// Here is a sample recursive implementation: https://www.nayuki.io/page/fast-discrete-cosine-transform-algorithms
-///   
+///
 /// My implementation here is iterative, which is more efficient than the recursive version.
 /// Here is a sample iterative implementation: https://www.codeproject.com/Articles/151043/Iterative-Fast-1D-Forvard-DCT
 
 /// Compute y[k] = sum_n=0..N-1 (x[n] * cos((n + 0.5) * k * PI / N)), for k = 0..N-1
-/// 
+///
 /// @param  vec   length M * N sequence to be transformed in last dimension
 /// @param  out   length M * N helping buffer, which is also the output
 /// @param  buf   length M * N helping buffer
 /// @param  cos   length N - 1, stores cosine values precomputed by function 'precompute_dct_cos'
-/// @param  M     length of dimension 0 of vec  
+/// @param  M     length of dimension 0 of vec
 /// @param  N     length of dimension 1 of vec, must be power of 2
 template <typename TValue>
-void dct_ref(const TValue *vec, TValue *out, TValue* buf, const TValue *cos, int N)
+void dct_ref(const TValue *vec, TValue *out, TValue *buf, const TValue *cos, int N)
 {
-    int block_count = (N + TPB - 1) / TPB; 
-    int thread_count = TPB; 
+    int block_count = (N + TPB - 1) / TPB;
+    int thread_count = TPB;
 
     // The input length must be power of 2
-    if (! isPowerOf2<int>(N))
+    if (!isPowerOf2<int>(N))
     {
         printf("Input length is not power of 2.\n");
-        assert(0); 
+        assert(0);
     }
 
     // Pointers point to the beginning indices of two adjacent iterations
-    TValue *curr = buf; 
-    TValue *next = out; 
+    TValue *curr = buf;
+    TValue *next = out;
 
     // 'temp' used to store date of two adjacent iterations
     // Copy 'vec' to the first N element in 'temp'
@@ -235,39 +224,32 @@ void dct_ref(const TValue *vec, TValue *out, TValue* buf, const TValue *cos, int
         len *= 2;
         cudaDeviceSynchronize();
         swap(curr, next);
-        
     }
 
     // Populate the final results into 'out'
     normalize<TValue><<<block_count, thread_count>>>(out, curr, N);
-    
 }
 
 template <typename T>
-__global__ void dct_1d_lee_kernel(const T* x, T* y, const int N)
+__global__ void dct_1d_lee_kernel(const T *x, T *y, const int N)
 {
     const int tid = blockIdx.x * blockDim.x + threadIdx.x;
-    
-    if(tid < N)
+
+    if (tid < N)
     {
         for (int i = 0; i < N; i++)
         {
-            y[tid] += x[i] * __cosf(PI / N * (i + 0.5) * tid);       
+            y[tid] += x[i] * __cosf(PI / N * (i + 0.5) * tid);
         }
-        
+
         y[tid] = y[tid] / N * 2;
     }
-
 }
 
 CpuTimer Timer;
 
 template <typename T>
-void dct_1d_lee(
-        const T *h_x,
-        T *h_y,
-        const int N
-        )
+void dct_1d_lee(const T *h_x, T *h_y, const int N)
 {
     T *d_x;
     T *d_y;
@@ -283,8 +265,7 @@ void dct_1d_lee(
     cudaMalloc((void **)&d_cos, size);
 
     cudaMemcpy(d_x, h_x, size, cudaMemcpyHostToDevice);
-    
-    
+
     // precompute_dct_cos<T>(d_cos, N);
     precompute_dct_cos_kernel<T><<<gridSize, blockSize>>>(d_cos, N, (int)log2(N));
     cudaDeviceSynchronize();
@@ -299,12 +280,12 @@ void dct_1d_lee(
 }
 
 template <typename T>
-int validate(T* result_cuda, T* result_gt, const int N)
+int validate(T *result_cuda, T *result_gt, const int N)
 {
-    for(int i = 0; i < N; ++i)
+    for (int i = 0; i < N; ++i)
     {
         int flag = (std::abs(result_cuda[i] - result_gt[i]) / std::abs(result_gt[i])) < epsilon;
-        if(flag == 0)
+        if (flag == 0)
         {
             printf("%d:, cuda_res: %f, gt_res: %f\n", i, result_cuda[i], result_gt[i]);
             // return 0;
@@ -314,7 +295,7 @@ int validate(T* result_cuda, T* result_gt, const int N)
 }
 
 template <typename T>
-int load_data(T* &data, T* &result)
+int load_data(T *&data, T *&result)
 {
     std::ifstream input_file("test_1d.dat", std::ios_base::in);
 
@@ -324,7 +305,7 @@ int load_data(T* &data, T* &result)
     input_file >> N;
     printf("N: %d\n", N);
     data = new T[N];
-    while(input_file >> val)
+    while (input_file >> val)
     {
         data[i] = val;
         i++;
@@ -335,7 +316,7 @@ int load_data(T* &data, T* &result)
     i = 0;
     input_file2 >> N;
     result = new T[N];
-    while(input_file2 >> val)
+    while (input_file2 >> val)
     {
         result[i] = val;
         i++;
@@ -344,7 +325,6 @@ int load_data(T* &data, T* &result)
     return N;
 }
 
-typedef double dtype;
 int main()
 {
     dtype *h_x;
@@ -353,7 +333,7 @@ int main()
 
     int N = load_data<dtype>(h_x, h_gt);
     h_y = new dtype[N];
-    
+
     double total_time = 0;
     for (int i = 0; i < NUM_RUNS; ++i)
     {
@@ -373,9 +353,9 @@ int main()
 
     printf("[D] dct1d_lee (%d) takes average %g ms\n", N, total_time / (NUM_RUNS - 1));
 
-    delete [] h_x;
-    delete [] h_y;
-    delete [] h_gt;
+    delete[] h_x;
+    delete[] h_y;
+    delete[] h_gt;
 
     return 0;
 }

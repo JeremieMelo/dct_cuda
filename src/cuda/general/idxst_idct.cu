@@ -1,31 +1,8 @@
 // idxst(idct(x)) is similar to the idct2d(x),
 // except tiny modification on preprocessing and postprocessing
-#include <cuda.h>
-#include "cuda_runtime.h"
-#include <cmath>
-#include <chrono>
-#include <cstdlib>
-#include <iostream>
-#include <string>
-#include <fstream>
-#include <assert.h>
-#include <cufft.h>
-#include "../utils/cuda_utils.cuh"
+#include "global.cuh"
 
 #define TPB (16)
-#define NUM_RUNS (101)
-
-#if 0
-typedef float dtype;
-typedef cufftReal dtypeReal;
-typedef cufftComplex dtypeComplex;
-#define epsilon (5e-1) //relative error
-#else
-typedef double dtype;
-typedef cufftDoubleReal dtypeReal;
-typedef cufftDoubleComplex dtypeComplex;
-#define epsilon (1e-2) //relative error
-#endif
 
 inline __device__ int INDEX(const int hid, const int wid, const int N)
 {
@@ -264,13 +241,13 @@ void makeCufftPlan<cufftDoubleComplex>(const int M, const int N, cufftHandle *pl
     cufftPlan2d(plan, M, N, CUFFT_Z2D);
 }
 
-void ifft2D(cufftDoubleComplex *d_x, cufftDoubleReal *d_y, const int M, const int N, cufftHandle &plan)
+void ifft2D(cufftDoubleComplex *d_x, cufftDoubleReal *d_y, cufftHandle &plan)
 {
     cufftExecZ2D(plan, d_x, d_y);
     cudaDeviceSynchronize();
 }
 
-void ifft2D(cufftComplex *d_x, cufftReal *d_y, const int M, const int N, cufftHandle &plan)
+void ifft2D(cufftComplex *d_x, cufftReal *d_y, cufftHandle &plan)
 {
     cufftExecC2R(plan, d_x, d_y);
     cudaDeviceSynchronize();
@@ -314,7 +291,7 @@ void idxst_idct(const T *h_x, T *h_y, const int M, const int N)
     idxst_idct_preprocess<T, TComplex><<<gridSize2, blockSize>>>(d_x, scratch, M, N, M / 2, N / 2, expkM, expkN);
     cudaDeviceSynchronize();
 
-    ifft2D(scratch, ifft_result, M, N, plan);
+    ifft2D(scratch, ifft_result, plan);
 
     idxst_idct_postprocess<T><<<gridSize, blockSize>>>(ifft_result, d_y, M, N, N / 2);
     cudaDeviceSynchronize();

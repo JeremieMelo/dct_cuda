@@ -1,29 +1,6 @@
-#include <cuda.h>
-#include "cuda_runtime.h"
-#include <cmath>
-#include <chrono>
-#include <cstdlib>
-#include <iostream>
-#include <string>
-#include <fstream>
-#include <assert.h>
-#include <cufft.h>
-#include "../utils/cuda_utils.cuh"
+#include "global.cuh"
 
 #define TPB (16)
-#define NUM_RUNS (101)
-
-#if 0
-typedef float dtype;
-typedef cufftReal dtypeReal;
-typedef cufftComplex dtypeComplex;
-#define epsilon (5e-1) //relative error
-#else
-typedef double dtype;
-typedef cufftDoubleReal dtypeReal;
-typedef cufftDoubleComplex dtypeComplex;
-#define epsilon (1e-2) //relative error
-#endif
 
 inline __device__ int INDEX(const int hid, const int wid, const int N)
 {
@@ -127,8 +104,8 @@ __global__ void precomputeExpk(cufftComplex *expkM, cufftComplex *expkN, const i
 
 template <typename T, typename TComplex>
 __global__ __launch_bounds__(TPB *TPB, 10) void dct2d_postprocess_backup(const TComplex *V, T *y, const int M, const int N,
-                                                                      const int halfN, const T two_over_MN, const T four_over_MN,
-                                                                      const TComplex *__restrict__ expkM, const TComplex *__restrict__ expkN)
+                                                                         const int halfN, const T two_over_MN, const T four_over_MN,
+                                                                         const TComplex *__restrict__ expkM, const TComplex *__restrict__ expkN)
 {
     const int wid = blockDim.x * blockIdx.x + threadIdx.x;
     const int hid = blockDim.y * blockIdx.y + threadIdx.y;
@@ -171,8 +148,8 @@ __global__ __launch_bounds__(TPB *TPB, 10) void dct2d_postprocess_backup(const T
 
 template <typename T, typename TComplex>
 __global__ __launch_bounds__(TPB *TPB, 10) void dct2d_postprocess_backup2(const TComplex *V, T *y, const int M, const int N,
-                                                                       const int halfM, const int halfN, const T two_over_MN, const T four_over_MN,
-                                                                       const TComplex *__restrict__ expkM, const TComplex *__restrict__ expkN)
+                                                                          const int halfM, const int halfN, const T two_over_MN, const T four_over_MN,
+                                                                          const TComplex *__restrict__ expkM, const TComplex *__restrict__ expkN)
 {
     const int wid = blockDim.x * blockIdx.x + threadIdx.x;
     const int hid = blockDim.y * blockIdx.y + threadIdx.y;
@@ -237,8 +214,8 @@ __global__ __launch_bounds__(TPB *TPB, 10) void dct2d_postprocess_backup2(const 
 
 template <typename T, typename TComplex>
 __global__ __launch_bounds__(TPB *TPB, 10) void dct2d_postprocess(const TComplex *V, T *y, const int M, const int N,
-                                                               const int halfM, const int halfN, const T two_over_MN, const T four_over_MN,
-                                                               const TComplex *__restrict__ expkM, const TComplex *__restrict__ expkN)
+                                                                  const int halfM, const int halfN, const T two_over_MN, const T four_over_MN,
+                                                                  const TComplex *__restrict__ expkM, const TComplex *__restrict__ expkN)
 {
     const int wid = blockDim.x * blockIdx.x + threadIdx.x;
     const int hid = blockDim.y * blockIdx.y + threadIdx.y;
@@ -313,7 +290,6 @@ __global__ __launch_bounds__(TPB *TPB, 10) void dct2d_postprocess(const TComplex
         }
     }
 }
-
 
 template <typename T>
 void makeCufftPlan(const int M, const int N, cufftHandle *plan) {}

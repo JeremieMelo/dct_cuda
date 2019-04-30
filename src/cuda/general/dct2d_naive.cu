@@ -1,13 +1,3 @@
-#include <cuda.h>
-#include "cuda_runtime.h"
-#include <cmath>
-#include <chrono>
-#include <cstdlib>
-#include <iostream>
-#include <string>
-#include <fstream>
-#include <assert.h>
-
 #include <thrust/host_vector.h>
 #include <thrust/device_vector.h>
 #include <thrust/functional.h>
@@ -15,12 +5,10 @@
 #include <thrust/scan.h>
 #include <thrust/iterator/counting_iterator.h>
 #include <thrust/iterator/transform_iterator.h>
-#include "../utils/cuda_utils.cuh"
+
+#include "global.cuh"
 
 #define TPB (32)
-#define epsilon (1e-2)
-#define NUM_RUNS (10)
-typedef double dtype;
 
 // convert a linear index to a linear index in the transpose
 struct transpose_index : public thrust::unary_function<size_t, size_t>
@@ -164,11 +152,7 @@ __global__ void dct_2d_naive_kernel(const T *x, T *y, const int M, const int N)
 
 CpuTimer Timer;
 template <typename T>
-void dct_2d_naive(
-    const T *h_x,
-    T *h_y,
-    int M,
-    int N)
+void dct_2d_naive(const T *h_x, T *h_y, int M, int N)
 {
     T *d_x;
     T *d_y;
@@ -183,7 +167,7 @@ void dct_2d_naive(
     dim3 blockSize(TPB, TPB, 1);
     dim3 gridSize1((N + TPB - 1) / TPB, (M + TPB - 1) / TPB, 1);
     dim3 gridSize2((M + TPB - 1) / TPB, (N + TPB - 1) / TPB, 1);
-    
+
     cudaDeviceSynchronize();
     Timer.Start();
 
