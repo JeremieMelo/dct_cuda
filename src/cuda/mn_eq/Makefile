@@ -2,7 +2,7 @@ ARCH=\
   -gencode arch=compute_60,code=compute_60 \
   -gencode arch=compute_60,code=sm_60
 
-OPTIONS=-O3  -use_fast_math -lcurand -Xcompiler -Wall  -lcublas -lcufft  -lineinfo # -rdc=true -Xcompiler -fopenmp --default-stream per-thread  #-maxrregcount 37
+OPTIONS=-O3  -use_fast_math -lcurand -Xcompiler -Wall  -lcublas -lcufft -prec-div=false -ftz=true -lineinfo # -rdc=true -Xcompiler -fopenmp --default-stream per-thread  #-maxrregcount 37
 
 all: dct_cuda dct_cuda_lee dct2d_cuda dct2d_cuda_lee dct2d_cuda_fft dct2d_cuda_fft_noexp idct2d_cuda_fft
 
@@ -30,7 +30,7 @@ dct2d_cuda_fft: dct2d_cuda_fft.cu
 
 dct2d_cuda_fft_noexp: dct2d_cuda_fft_noexpansion.cu
 	mkdir -p bin
-	nvcc -w $(ARCH) $(OPTIONS) -prec-div=false -ftz=true -o bin/dct2d_cuda_fft_noexp dct2d_cuda_fft_noexpansion.cu
+	nvcc -w $(ARCH) $(OPTIONS) -o bin/dct2d_cuda_fft_noexp dct2d_cuda_fft_noexpansion.cu
 
 idct2d_cuda_fft: idct2d_cuda_fft.cu
 	mkdir -p bin
