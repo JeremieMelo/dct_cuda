@@ -611,7 +611,7 @@ void dct_1d_lee(const T *h_x, T *h_y, const int N)
 
     cudaMemcpy(d_x, h_x, size, cudaMemcpyHostToDevice);
 
-    precompute_dct_cos_kernel<T><<<(N + TPB - 1) / TPB, TPB, 0, streams[0]>>>(d_cos0, N, (int)log2(N));
+    precompute_dct_cos_kernel<T><<<(N + TPB - 1) / TPB, TPB>>>(d_cos0, N, (int)log2(N));
     dim3 gridSize(1, 1, 1);
     dim3 blockSize(std::min(TPB, N >> 1), 1, 1);
     size_t shared_memory_size = 2 * N * sizeof(T);
@@ -619,7 +619,7 @@ void dct_1d_lee(const T *h_x, T *h_y, const int N)
     cudaDeviceSynchronize();
     Timer.Start();
 
-    dct_1d_kernel<T, int><<<gridSize, blockSize, shared_memory_size>>>(d_x, d_y, d_cos0, N, 2.0 / N);
+    dct_1d_kernel<T, int><<<gridSize, blockSize, shared_memory_size>>>(d_x, d_y, d_cos0, N, 4.0 / N);
 
     cudaDeviceSynchronize();
     Timer.Stop();
