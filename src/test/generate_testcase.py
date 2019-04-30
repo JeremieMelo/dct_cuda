@@ -3,7 +3,7 @@
 '''
 @Author: Jake Gu
 @Date: 2019-04-15 19:19:32
-@LastEditTime: 2019-04-29 22:23:41
+@LastEditTime: 2019-04-30 16:35:10
 '''
 import sys
 sys.path.append('..')
@@ -53,13 +53,13 @@ def gen_output_2d(test_case="test_2d.dat"):
     first_column = torch.Tensor(first_column).to(torch.float64)
 
     dct_2d(x, M, N)
-    idct_2d(x, M, N)
-    idct2d_idcct2(x, M, N, first_row, first_column)
-    idcct2(x, M, N)
-    idcst2(x, M, N)
-    idsct2(x, M, N)
-    idxst_idct(x, M, N)
-    idct_idxst(x, M, N)
+    # idct_2d(x, M, N)
+    # idct2d_idcct2(x, M, N, first_row, first_column)
+    # idcct2(x, M, N)
+    # idcst2(x, M, N)
+    # idsct2(x, M, N)
+    # idxst_idct(x, M, N)
+    # idct_idxst(x, M, N)
 
 
 def dct_1d(test_case="test_1d.dat"):
@@ -86,8 +86,10 @@ def dct_2d(x, M, N):
     with open("result_2d.dat", "w") as f:
         f.write("{}\n".format(M))
         f.write("{}\n".format(N))
-        for i in range(M*N):
-            f.write("{}\n".format(y[i]))
+        y = '\n'.join(map(lambda x: str(x), y.tolist()))
+        f.write(y)
+        # for i in range(M*N):
+        #     f.write("{}\n".format(y[i]))
 
 
 def idct_2d(x, M, N):
@@ -197,7 +199,7 @@ def fft_2d(test_case="test_2d_fft.dat"):
 
 
 if __name__ == "__main__":
-    gen_input_2d(M=256, N=256)
+    gen_input_2d(M=2048, N=4096)
     gen_output_2d()
     # gen_input_1d(1024)
     # dct_1d()

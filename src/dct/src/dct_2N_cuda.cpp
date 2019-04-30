@@ -1,7 +1,7 @@
 /*
  * @Author: Jake Gu
  * @Date: 2019-04-02 16:34:45
- * @LastEditTime: 2019-04-23 15:46:29
+ * @LastEditTime: 2019-04-30 13:26:16
  */
 /**
  * @file   dct_2N_cuda.cpp

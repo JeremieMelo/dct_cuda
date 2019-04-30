@@ -1,15 +1,14 @@
 /*
  * @Author: Jake Gu
  * @Date: 2019-04-21 14:50:47
- * @LastEditTime: 2019-04-29 21:58:59
+ * @LastEditTime: 2019-04-30 16:44:07
  */
 #ifndef __CUDA_UTILS_H__
 #define __CUDA_UTILS_H__
 
 #include <cuda.h>
-#include "cuda_runtime.h"
+#include <cuda_runtime.h>
 #include <device_launch_parameters.h>
-#include <device_functions.h>
 #include <chrono>
 #include <cufft.h>
 #include <assert.h>
@@ -158,6 +157,11 @@ inline __device__ __host__ void swap(T &x, T &y)
     T tmp = x;
     x = y;
     y = tmp;
+}
+
+inline __device__ int INDEX(const int hid, const int wid, const int N)
+{
+    return (hid * N + wid);
 }
 
 inline __device__ __host__ int LogBase2(uint64_t n)

@@ -6,21 +6,21 @@ ARCH=\
 
 OPTIONS=-O3 -use_fast_math -lcurand -Xcompiler -Wall -lcublas -lcufft -prec-div=false -ftz=true -lineinfo # -rdc=true -Xcompiler -fopenmp --default-stream per-thread  #-maxrregcount 37
 
-all: dct2d_naive dct2d_lee dct2d_fft idct2d_fft idct_idxst idxst_idct
+all: dct2_naive dct2_lee dct2_fft2 idct2_fft2 idct_idxst idxst_idct
 
-dct2d_naive: dct2d_naive.cu
+dct2_naive: dct2_naive.cu
 	mkdir -p $(BIN_DIR)
 	nvcc -w $(ARCH) $(OPTIONS) -o $(BIN_DIR)/$@ $<
 
-dct2d_lee: dct2d_lee.cu
+dct2_lee: dct2_lee.cu
 	mkdir -p $(BIN_DIR)
 	nvcc -w $(ARCH) $(OPTIONS) -o $(BIN_DIR)/$@ $<
 
-dct2d_fft: dct2d_fft.cu
+dct2_fft2: dct2_fft2.cu
 	mkdir -p $(BIN_DIR)
 	nvcc -w $(ARCH) $(OPTIONS) -o $(BIN_DIR)/$@ $<
 
-idct2d_fft: idct2d_fft.cu
+idct2_fft2: idct2_fft2.cu
 	mkdir -p $(BIN_DIR)
 	nvcc -w $(ARCH) $(OPTIONS) -o $(BIN_DIR)/$@ $<
 

@@ -4,11 +4,6 @@
 
 #define TPB (16)
 
-inline __device__ int INDEX(const int hid, const int wid, const int N)
-{
-    return (hid * N + wid);
-}
-
 // Adpated from idct2d_postprocess() with changes on sign and scale
 // if (wid % 2 == 1)
 //     new_output[hid][wid] = -0.5 * output[hid][wid];

@@ -3,7 +3,7 @@
 '''
 @Author: Jake Gu
 @Date: 2019-04-13 19:59:17
-@LastEditTime: 2019-04-29 21:05:00
+@LastEditTime: 2019-04-30 16:40:02
 '''
 ##
 # @file   dct_unitest.py
@@ -26,6 +26,7 @@ from src import dct
 from src import dct_lee
 #from src import dct_lee as dct
 from src import discrete_spectral_transform
+from src import dct2_fft2
 sys.path.pop()
 import pdb
 
@@ -447,7 +448,7 @@ def eval_runtime():
     N = 4096
     runs = 100
     # x = torch.empty(10, N, N, dtype=torch.float64).uniform_(0, 10.0).cuda()
-    with open("../result_2d.dat", "r") as f:
+    with open("../test/test_2d.dat", "r") as f:
         lines = f.readlines()
         M = int(lines[0].strip())
         N = int(lines[1].strip())
@@ -457,14 +458,32 @@ def eval_runtime():
     expk0 = discrete_spectral_transform.get_expk(M, dtype=x.dtype, device=x.device)
     expk1 = discrete_spectral_transform.get_expk(N, dtype=x.dtype, device=x.device)
 
+    expkM = dct2_fft2.precompute_dct2_fft2_expk(M, dtype=x.dtype, device=x.device)
+    expkN = dct2_fft2.precompute_dct2_fft2_expk(N, dtype=x.dtype, device=x.device)
+
+    
+
     print("M = {}, N = {}".format(M, N))
-    '''
+
+    dct2func = dct2_fft2.DCT2(expkM, expkN)
+    y = dct2func.forward(x)
+    torch.cuda.synchronize()
+    # with torch.autograd.profiler.profile(use_cuda=True) as prof:
+    tt = time.time()
+    for i in range(runs):
+        y_test = dct2func.forward(x)
+    torch.cuda.synchronize()
+    
+    print("CUDA: DCT2_FFT2 Function takes %.5f ms" % ((time.time()-tt)/runs*1000))
+    
+    
     x_numpy = x.data.cpu().numpy()
     tt = time.time()
     for i in range(runs):
        y = fftpack.dct(fftpack.dct(x_numpy.T, norm=None).T/N, norm=None)/M
     print("CPU: scipy.fftpack.dct2d takes %f ms" % ((time.time()-tt)/runs*1000))
-
+    np.testing.assert_allclose(y_test.data.detach().cpu().numpy(), y, rtol=1e-6, atol=1e-5)
+    
     # 9s for 200 iterations 1024x1024 on GTX 1080
     torch.cuda.synchronize()
     tt = time.time()
@@ -519,7 +538,7 @@ def eval_runtime():
     #print(prof)
     print("CUDA: DCT2d_Lee Function takes %.5f ms" % ((time.time()-tt)/runs*1000))
     exit()
-    '''
+    
 
     y_N = discrete_spectral_transform.idct2_2N(x, expk0=expk0, expk1=expk1)
     torch.cuda.synchronize()

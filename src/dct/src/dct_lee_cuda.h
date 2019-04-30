@@ -1,3 +1,8 @@
+/*
+ * @Author: Jake Gu
+ * @Date: 2019-04-02 16:34:45
+ * @LastEditTime: 2019-04-30 11:55:04
+ */
 /**
  * @file   dct_lee_cuda.h
  * @author Yibo Lin

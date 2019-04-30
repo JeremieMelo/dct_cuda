@@ -1,7 +1,7 @@
 /*
  * @Author: Jake Gu
  * @Date: 2019-04-02 16:34:45
- * @LastEditTime: 2019-04-15 15:14:17
+ * @LastEditTime: 2019-04-30 16:12:44
  */
 /**
  * @file   dct_cuda.h
@@ -205,4 +205,27 @@ void computeTruncationCudaLauncher(
         T* z // M*N
         );
 
+//dct2_fft2
+at::Tensor dct2_fft2_forward(
+        at::Tensor x,
+        at::Tensor expkM, 
+        at::Tensor expkN);
+        
+template <typename T>
+void dct2dPreprocessCudaLauncher(
+        const T* x,
+        T* y,
+        const int M, 
+        const int N
+        );
+
+template <typename T>
+void dct2dPostprocessCudaLauncher(
+        const T *x, 
+        T *y, 
+        const int M, 
+        const int N,
+        const T *__restrict__ expkM, 
+        const T *__restrict__ expkN
+        );
 #endif

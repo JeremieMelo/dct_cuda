@@ -1,7 +1,7 @@
 /*
  * @Author: Jake Gu
  * @Date: 2019-04-02 16:34:45
- * @LastEditTime: 2019-04-15 18:01:10
+ * @LastEditTime: 2019-04-30 13:42:54
  */
 /**
  * @file   dct_cuda.cpp
@@ -297,5 +297,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("idct_2N", &idct_2N_forward, "IDCT forward (CUDA)");
   m.def("dct2_2N", &dct2_2N_forward, "DCT2 forward (CUDA)");
   m.def("idct2_2N", &idct2_2N_forward, "IDCT2 forward (CUDA)");
+
 }
 
