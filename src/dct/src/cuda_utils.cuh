@@ -1,7 +1,7 @@
 /*
  * @Author: Jake Gu
  * @Date: 2019-04-21 14:50:47
- * @LastEditTime: 2019-04-30 16:02:20
+ * @LastEditTime: 2019-04-30 21:22:30
  */
  #ifndef __CUDA_UTILS_H__
  #define __CUDA_UTILS_H__
@@ -183,7 +183,7 @@
  }
  
  template <typename T>
- struct __align__(16) ComplexType
+ struct  ComplexType
  {
      T x;
      T y;

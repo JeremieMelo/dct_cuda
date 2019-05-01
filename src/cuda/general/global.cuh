@@ -1,6 +1,6 @@
 #include "../utils/cuda_utils.cuh"
 
-#if 0
+#if 1
 typedef float dtype;
 typedef cufftReal dtypeReal;
 typedef cufftComplex dtypeComplex;

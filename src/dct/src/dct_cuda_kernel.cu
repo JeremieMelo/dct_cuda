@@ -447,8 +447,8 @@ void dct2dPreprocessCudaLauncher(
 
 template <typename T>
 __global__ __launch_bounds__(1024, 10) void dct2dPostprocess(const T *x_raw, T *y, const int M, const int N,
-                                                               const int halfM, const int halfN, const T two_over_MN, const T four_over_MN,
-                                                               const T *__restrict__ expkM_raw, const T *__restrict__ expkN_raw)
+                                                             const int halfM, const int halfN, const T two_over_MN, const T four_over_MN,
+                                                             const T *__restrict__ expkM_raw, const T *__restrict__ expkN_raw)
 {
     const ComplexType<T> *V = (ComplexType<T>*)x_raw;
     const ComplexType<T> *__restrict__ expkM = (ComplexType<T>*) expkM_raw;

@@ -1,7 +1,7 @@
 /*
  * @Author: Jake Gu
  * @Date: 2019-04-02 16:34:45
- * @LastEditTime: 2019-04-30 17:21:04
+ * @LastEditTime: 2019-05-01 00:22:01
  */
 
 #include "dct_cuda.h"
@@ -36,8 +36,10 @@ at::Tensor dct2_fft2_forward(
                         M,
                         N
                         );
-                        
+                
                 auto buf = at::rfft(out, 2, false, true);
+                // buf = buf.contiguous();
+                buf.resize_({M,N+2});
                 
                 dct2dPostprocessCudaLauncher<scalar_t>(
                         buf.data<scalar_t>(),
@@ -48,7 +50,7 @@ at::Tensor dct2_fft2_forward(
                         expkN.data<scalar_t>()
                 );
                 });
-        return out.contiguous();
+        return out;
 }
 
 
