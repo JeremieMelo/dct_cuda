@@ -1,15 +1,14 @@
 /*
  * @Author: Jake Gu
  * @Date: 2019-04-21 14:50:47
- * @LastEditTime: 2019-04-30 21:22:30
+ * @LastEditTime: 2019-05-01 11:04:24
  */
  #ifndef __CUDA_UTILS_H__
  #define __CUDA_UTILS_H__
  
  #include <cuda.h>
- #include "cuda_runtime.h"
+ #include <cuda_runtime.h>
  #include <device_launch_parameters.h>
- #include <device_functions.h>
  #include <chrono>
  #include <cufft.h>
  #include <assert.h>

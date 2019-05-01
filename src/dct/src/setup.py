@@ -3,7 +3,7 @@
 '''
 @Author: Jake Gu
 @Date: 2019-04-30 16:06:13
-@LastEditTime: 2019-04-30 19:51:55
+@LastEditTime: 2019-05-01 11:00:08
 '''
 ##
 # @file   setup.py
@@ -63,6 +63,11 @@ setup(
                 [
                     'idxst_idct_cuda.cpp',
                     'dct_cuda_kernel.cu'
+                    ]),
+            CUDAExtension('dct2_lee_cuda', 
+                [
+                    'dct2_lee_cuda.cpp',
+                    'dct2_lee_cuda_kernel.cu'
                     ])
             ],
         cmdclass={
