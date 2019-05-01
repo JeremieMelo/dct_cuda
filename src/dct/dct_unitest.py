@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-# coding=UTF-8
 '''
 @Author: Jake Gu
 @Date: 2019-04-30 19:37:54
@@ -474,7 +472,7 @@ class DXTOpTest(unittest.TestCase):
 
 
 def eval_torch_rfft2d(x, runs):
-    for i in range(10):
+    for i in range(100):
         a = torch.rfft(x, signal_ndim=2, onesided=True)
     torch.cuda.synchronize()
     tt = time.time()
@@ -595,13 +593,13 @@ def eval_idct2d(x, expk0, expk1, expkM, expkN, runs):
     torch.cuda.synchronize()
     print("Ours: IDCT2_FFT2 takes %.7f ms" % ((time.time()-tt)/runs*1000))
 
-    y_N = discrete_spectral_transform.idct2_2N(x, expk0=expk0, expk1=expk1)
+    y_N = discrete_spectral_transform.idct2_N(x, expk0=expk0, expk1=expk1)
     torch.cuda.synchronize()
     tt = time.time()
     for i in range(runs):
-        y_N = discrete_spectral_transform.idct2_2N(x, expk0=expk0, expk1=expk1)
+        y_N = discrete_spectral_transform.idct2_N(x, expk0=expk0, expk1=expk1)
     torch.cuda.synchronize()
-    print("idct2_2N takes %.7f ms" % ((time.time()-tt)/runs*1000))
+    print("PyTorch idct2_N takes %.7f ms" % ((time.time()-tt)/runs*1000))
 
     idct2func = dct.IDCT2(expk0, expk1, algorithm='2N')
     y_N = idct2func.forward(x)
@@ -623,7 +621,8 @@ def eval_idct2d(x, expk0, expk1, expkM, expkN, runs):
     # print(prof)
     print("IDCT2_N Function takes %.7f ms" % ((time.time()-tt)/runs*1000))
 
-    np.testing.assert_allclose(y_test.data.detach().cpu().numpy(), y_N, rtol=1e-6, atol=1e-5)
+    np.testing.assert_allclose(y_test.data.detach().cpu().numpy(),
+                               y_N.data.detach().cpu().numpy(), rtol=1e-6, atol=1e-5)
     print("")
 
 
@@ -646,7 +645,8 @@ def eval_idxt2d(x, expk0, expk1, expkM, expkN, runs):
     print("PyTorch: idxst_idct takes %.7f ms" % ((time.time()-tt)/runs*1000))
 
     y_N.mul_(1./x.size(0)/x.size(1))
-    np.testing.assert_allclose(y_test.data.detach().cpu().numpy(), y_N, rtol=1e-6, atol=1e-5)
+    np.testing.assert_allclose(y_test.data.detach().cpu().numpy(),
+                               y_N.data.detach().cpu().numpy(), rtol=1e-6, atol=1e-5)
 
     dct2func = dct2_fft2.IDCT_IDXST(x.size(-2), x.size(-1), x.dtype, x.device, expkM, expkN)
     y = dct2func.forward(x)
@@ -665,7 +665,9 @@ def eval_idxt2d(x, expk0, expk1, expkM, expkN, runs):
     torch.cuda.synchronize()
     print("PyTorch: idct_idxst takes %.7f ms" % ((time.time()-tt)/runs*1000))
 
-    np.testing.assert_allclose(y_test.data.detach().cpu().numpy(), y_N/x.size(0)/x.size(1), rtol=1e-6, atol=1e-5)
+    y_N.mul_(1./x.size(0)/x.size(1))
+    np.testing.assert_allclose(y_test.data.detach().cpu().numpy(),
+                               y_N.data.detach().cpu().numpy(), rtol=1e-6, atol=1e-5)
 
     print("")
 
