@@ -33,29 +33,24 @@ def precompute_expk(N, dtype, device):
     return expk.contiguous()
 
 
-def dct2(x, expkM, expkN):
-    """compute 2D discrete cosine transformation
-    """
-    if x.is_cuda:
-        out = dct2_fft2_cuda.dct2_fft2(x, expkM, expkN)
-    else:
-        assert 0, "No CPU Implementation"
-    return out
-
-
 class DCT2Function(Function):
     @staticmethod
-    def forward(ctx, x, expkM, expkN):
-        return dct2(x, expkM, expkN)
-
+    def forward(ctx, x, expkM, expkN, out, buf):
+        if x.is_cuda:
+            dct2_fft2_cuda.dct2_fft2(x, expkM, expkN, out, buf)
+            return out
+        else:
+            assert 0, "No CPU Implementation"
 
 class DCT2(nn.Module):
     def __init__(self, expkM=None, expkN=None):
         super(DCT2, self).__init__()
         self.expkM = expkM
         self.expkN = expkN
+        self.out = None
+        self.buf = None
 
-    def forward(self, x):
+    def forward(self, x, M, N):
         assert self.expkM is not None and self.expkN is not None, "expkM and expkN must be input"
         # if self.expkM is None or self.expkM.size(-1) != x.size(-2):
         #     if x.is_cuda:
@@ -67,7 +62,10 @@ class DCT2(nn.Module):
         #         self.expkN = dct_cuda.precompute_dct2_fft2_expk(x.size(-1))
         #     else:
         #         assert 0, "No CPU Implementation"
-        return DCT2Function.apply(x, self.expkM, self.expkN)
+        if self.out is None or self.out.size() != x.size():
+            self.out = torch.empty_like(x)
+            self.buf = torch.empty(M, N / 2 + 1, 2, device=x.device)
+        return DCT2Function.apply(x, self.expkM, self.expkN, self.out, self.buf)
 
 
 def idct_idxst(x, expkM, expkN):
@@ -97,6 +95,8 @@ class IDCT_IDXST(nn.Module):
         return IDCT_IDXSTFunction.apply(x, self.expkM, self.expkN)
 
 # idxst_idct
+
+
 def idxst_idct(x, expkM, expkN):
     """compute 2D discrete cosine transformation
     """
@@ -124,6 +124,8 @@ class IDXST_IDCT(nn.Module):
         return IDXST_IDCTFunction.apply(x, self.expkM, self.expkN)
 
 # idct2_fft2
+
+
 def idct2(x, expkM, expkN):
     """compute 2D discrete cosine transformation
     """
