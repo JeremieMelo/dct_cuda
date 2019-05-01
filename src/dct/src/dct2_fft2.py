@@ -33,21 +33,14 @@ def precompute_expk(N, dtype, device):
     return expk.contiguous()
 
 
-def dct2(x, expkM, expkN):
-    """compute 2D discrete cosine transformation
-    """
-    if x.is_cuda:
-        out = dct2_fft2_cuda.dct2_fft2(x, expkM, expkN)
-    else:
-        assert 0, "No CPU Implementation"
-    return out
-
-
 class DCT2Function(Function):
     @staticmethod
     def forward(ctx, x, expkM, expkN, out, buf):
-        return dct2(x, expkM, expkN, out, buf)
-
+        if x.is_cuda:
+            dct2_fft2_cuda.dct2_fft2(x, expkM, expkN, out, buf)
+            return out
+        else:
+            assert 0, "No CPU Implementation"
 
 class DCT2(nn.Module):
     def __init__(self, expkM=None, expkN=None):
@@ -71,7 +64,7 @@ class DCT2(nn.Module):
         #         assert 0, "No CPU Implementation"
         if self.out is None or self.out.size() != x.size():
             self.out = torch.empty_like(x)
-            self.buf = torch.empty(M, N / 2 + 1, 2)
+            self.buf = torch.empty(M, N / 2 + 1, 2, device=x.device
         return DCT2Function.apply(x, self.expkM, self.expkN, self.out, self.buf)
 
 
