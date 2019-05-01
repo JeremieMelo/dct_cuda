@@ -1,22 +1,23 @@
 #!/usr/bin/env python
 # coding=UTF-8
-import sys
-sys.path.append('..')
-import torch
-from torch.autograd import Function, Variable
-import time
-import scipy
-from scipy import fftpack
-import numpy as np
-import random
-from dct.src import discrete_spectral_transform
 '''
 @Author: Jake Gu
-@Date: 2019-04-30 21:41:01
-@LastEditTime: 2019-04-30 21:42:23
+@Date: 2019-05-01 12:10:51
+@LastEditTime: 2019-05-01 12:35:40
 '''
+#!/usr/bin/env python
+# coding=UTF-8
+import sys
+sys.path.append('..')
 
-
+from dct.src import discrete_spectral_transform
+import random
+import numpy as np
+from scipy import fftpack
+import scipy
+import time
+from torch.autograd import Function, Variable
+import torch
 
 def gen_input_1d(N=512**2, dim=1):
     if(dim == 1):
@@ -167,7 +168,7 @@ def idct_idxst(x, M, N):
 
 
 if __name__ == "__main__":
-    gen_input_2d(M=4, N=4)
+    gen_input_2d(M=2048, N=4096)
     gen_output_2d()
     # gen_input_1d(1024)
     # dct_1d()

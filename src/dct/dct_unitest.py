@@ -3,7 +3,7 @@
 '''
 @Author: Jake Gu
 @Date: 2019-04-30 19:37:54
-@LastEditTime: 2019-05-01 00:20:14
+@LastEditTime: 2019-05-01 12:08:40
 '''
 import pdb
 from src import dct2_fft2
@@ -22,8 +22,7 @@ import time
 import scipy
 from scipy import fftpack
 
-sys.path.append(os.path.dirname(os.path.dirname(
-    os.path.dirname(os.path.abspath(__file__)))))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 sys.path.pop()
 
@@ -475,7 +474,8 @@ class DXTOpTest(unittest.TestCase):
 
 
 def eval_torch_rfft2d(x, runs):
-    a = torch.rfft(x, signal_ndim=2, onesided=True)
+    for i in range(10):
+        a = torch.rfft(x, signal_ndim=2, onesided=True)
     torch.cuda.synchronize()
     tt = time.time()
     for i in range(runs):
@@ -523,7 +523,7 @@ def eval_dct2d(x, expk0, expk1, expkM, expkN, runs):
     x_numpy = x.data.cpu().numpy()
     torch.cuda.synchronize()
     tt = time.time()
-    y = fftpack.dct(fftpack.dct(x_numpy.T, norm=None).T/N, norm=None)/M
+    y = fftpack.dct(fftpack.dct(x_numpy.T, norm=None).T/x.size(1), norm=None)/x.size(0)
     torch.cuda.synchronize()
     print("CPU: scipy.fftpack.dct2d takes %.7f ms" % ((time.time()-tt)*1000))
 
@@ -759,7 +759,7 @@ def eval_runtime():
     print("M = {}, N = {}".format(M, N))
 
     eval_torch_rfft2d(x, runs)
-    eval_dct2d(x, expk0, expk1, expkM, expkN, runs, M, N)
+    eval_dct2d(x, expk0, expk1, expkM, expkN, runs)
     eval_idct2d(x, expk0, expk1, expkM, expkN, runs)
     eval_idxt2d(x, expk0, expk1, expkM, expkN, runs)
     eval_others(x, expk0, expk1, expkM, expkN, runs)
