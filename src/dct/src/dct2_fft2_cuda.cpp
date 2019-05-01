@@ -7,7 +7,7 @@
 #include "dct_cuda.h"
 
 
-at::Tensor dct2_fft2_forward(
+void dct2_fft2_forward(
         at::Tensor x,
         at::Tensor expkM,
         at::Tensor expkN,
