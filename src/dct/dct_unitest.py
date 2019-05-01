@@ -498,11 +498,11 @@ def eval_torch_rfft2d(x, runs):
 
 def eval_dct2d(x, expk0, expk1, expkM, expkN, runs, M, N):
     dct2func = dct2_fft2.DCT2(expkM, expkN)
-    y = dct2func.forward(x)
+    y = dct2func.forward(x, M, N)
     torch.cuda.synchronize()
     tt = time.time()
     for i in range(runs):
-        y_test = dct2func.forward(x)
+        y_test = dct2func.forward(x, M, N)
     torch.cuda.synchronize()
     print("CUDA: DCT2_FFT2 takes %.7f ms" % ((time.time()-tt)/runs*1000))
 

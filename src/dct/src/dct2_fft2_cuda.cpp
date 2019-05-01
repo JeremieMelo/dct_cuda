@@ -9,25 +9,27 @@
 
 at::Tensor dct2_fft2_forward(
         at::Tensor x,
-        at::Tensor expkM, 
-        at::Tensor expkN
-        ) 
+        at::Tensor expkM,
+        at::Tensor expkN,
+        at::Tensor out,
+        at::Tensor buf
+        )
 {
     CHECK_GPU(x);
     CHECK_GPU(expkM);
     CHECK_GPU(expkN);
-    // CHECK_GPU(buf);
-    // CHECK_GPU(out);
+    CHECK_GPU(out);
+    CHECK_GPU(buf);
+
     CHECK_CONTIGUOUS(x);
     CHECK_CONTIGUOUS(expkM);
     CHECK_CONTIGUOUS(expkN);
-    // CHECK_CONTIGUOUS(buf);
-    // CHECK_CONTIGUOUS(out);
+    CHECK_CONTIGUOUS(out);
+    CHECK_CONTIGUOUS(buf);
 
     auto N = x.size(-1);
-    auto M = x.numel()/N; 
+    auto M = x.numel()/N;
 
-    auto out = at::empty({M, N}, x.options());
     AT_DISPATCH_FLOATING_TYPES(x.type(), "dct2_fft2_forward", [&] {
 
                 dct2dPreprocessCudaLauncher<scalar_t>(
@@ -36,19 +38,18 @@ at::Tensor dct2_fft2_forward(
                         M,
                         N
                         );
-                        
-                auto buf = at::rfft(out, 2, false, true);
-                
+
+                buf = at::rfft(out, 2, false, true);
+
                 dct2dPostprocessCudaLauncher<scalar_t>(
                         buf.data<scalar_t>(),
                         out.data<scalar_t>(),
-                        M, 
+                        M,
                         N,
                         expkM.data<scalar_t>(),
                         expkN.data<scalar_t>()
                 );
                 });
-        return out.contiguous();
 }
 
 
