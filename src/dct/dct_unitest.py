@@ -506,17 +506,17 @@ def eval_torch_rfft2d(x, runs):
         b = torch.irfft(a, signal_ndim=2, onesided=True, signal_sizes=x.shape)
     torch.cuda.synchronize()
     print("torch.irfft2d takes %.7f ms" % ((time.time()-tt)/runs*1000))
-    
+
     print("")
 
 
-def eval_dct2d(x, expk0, expk1, expkM, expkN, runs, M, N):
-    dct2func = dct2_fft2.DCT2(expkM, expkN)
-    y = dct2func.forward(x, M, N)
+def eval_dct2d(x, expk0, expk1, expkM, expkN, runs):
+    dct2func = dct2_fft2.DCT2(x.size(-2), x.size(-1), x.dtype, x.device, expkM, expkN)
+    y = dct2func.forward(x)
     torch.cuda.synchronize()
     tt = time.time()
     for i in range(runs):
-        y_test = dct2func.forward(x, M, N)
+        y_test = dct2func.forward(x)
     torch.cuda.synchronize()
     print("Ours: DCT2_FFT2 takes %.7f ms" % ((time.time()-tt)/runs*1000))
 
@@ -540,8 +540,8 @@ def eval_dct2d(x, expk0, expk1, expkM, expkN, runs, M, N):
     print("Pytorch: dct2d_2N takes %.7f ms" % ((time.time()-tt)/runs*1000))
 
     # 11s for 200 iterations 1024x1024 on GTX 1080
-    perm0 = discrete_spectral_transform.get_perm(M, dtype=torch.int64, device=x.device)
-    perm1 = discrete_spectral_transform.get_perm(N, dtype=torch.int64, device=x.device)
+    perm0 = discrete_spectral_transform.get_perm(x.size(-2), dtype=torch.int64, device=x.device)
+    perm1 = discrete_spectral_transform.get_perm(x.size(-1), dtype=torch.int64, device=x.device)
     torch.cuda.synchronize()
     tt = time.time()
     # with torch.autograd.profiler.profile(use_cuda=True) as prof:
@@ -586,7 +586,7 @@ def eval_dct2d(x, expk0, expk1, expkM, expkN, runs, M, N):
 
 
 def eval_idct2d(x, expk0, expk1, expkM, expkN, runs):
-    dct2func = dct2_fft2.IDCT2(expkM, expkN)
+    dct2func = dct2_fft2.IDCT2(x.size(-2), x.size(-1), x.dtype, x.device, expkM, expkN)
     y = dct2func.forward(x)
     torch.cuda.synchronize()
     tt = time.time()
@@ -622,13 +622,13 @@ def eval_idct2d(x, expk0, expk1, expkM, expkN, runs):
     torch.cuda.synchronize()
     # print(prof)
     print("IDCT2_N Function takes %.7f ms" % ((time.time()-tt)/runs*1000))
-    
+
     np.testing.assert_allclose(y_test.data.detach().cpu().numpy(), y_N, rtol=1e-6, atol=1e-5)
     print("")
 
 
 def eval_idxt2d(x, expk0, expk1, expkM, expkN, runs):
-    dct2func = dct2_fft2.IDXST_IDCT(expkM, expkN)
+    dct2func = dct2_fft2.IDXST_IDCT(x.size(-2), x.size(-1), x.dtype, x.device, expkM, expkN)
     y = dct2func.forward(x)
     torch.cuda.synchronize()
     tt = time.time()
@@ -648,7 +648,7 @@ def eval_idxt2d(x, expk0, expk1, expkM, expkN, runs):
     y_N.mul_(1./x.size(0)/x.size(1))
     np.testing.assert_allclose(y_test.data.detach().cpu().numpy(), y_N, rtol=1e-6, atol=1e-5)
 
-    dct2func = dct2_fft2.IDCT_IDXST(expkM, expkN)
+    dct2func = dct2_fft2.IDCT_IDXST(x.size(-2), x.size(-1), x.dtype, x.device, expkM, expkN)
     y = dct2func.forward(x)
     torch.cuda.synchronize()
     tt = time.time()
@@ -763,6 +763,7 @@ def eval_runtime():
     eval_idct2d(x, expk0, expk1, expkM, expkN, runs)
     eval_idxt2d(x, expk0, expk1, expkM, expkN, runs)
     eval_others(x, expk0, expk1, expkM, expkN, runs)
+
 
 if __name__ == '__main__':
     # torch.manual_seed(10)
