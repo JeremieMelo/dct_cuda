@@ -64,7 +64,7 @@ class DCT2(nn.Module):
         #         assert 0, "No CPU Implementation"
         if self.out is None or self.out.size() != x.size():
             self.out = torch.empty_like(x)
-            self.buf = torch.empty(M, N / 2 + 1, 2, device=x.device
+            self.buf = torch.empty(M, N / 2 + 1, 2, device=x.device)
         return DCT2Function.apply(x, self.expkM, self.expkN, self.out, self.buf)
 
 
