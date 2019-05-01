@@ -1,11 +1,10 @@
 /*
  * @Author: Jake Gu
  * @Date: 2019-04-02 16:34:45
- * @LastEditTime: 2019-04-30 16:10:55
+ * @LastEditTime: 2019-04-30 17:21:04
  */
 
 #include "dct_cuda.h"
-#include "dct2_fft2_cuda.h"
 
 
 at::Tensor dct2_fft2_forward(

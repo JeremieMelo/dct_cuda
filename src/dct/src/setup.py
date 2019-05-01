@@ -3,7 +3,7 @@
 '''
 @Author: Jake Gu
 @Date: 2019-04-30 16:06:13
-@LastEditTime: 2019-04-30 16:20:39
+@LastEditTime: 2019-04-30 19:51:55
 '''
 ##
 # @file   setup.py
@@ -47,6 +47,21 @@ setup(
             CUDAExtension('dct2_fft2_cuda', 
                 [
                     'dct2_fft2_cuda.cpp',
+                    'dct_cuda_kernel.cu'
+                    ]),
+            CUDAExtension('idct2_fft2_cuda', 
+                [
+                    'idct2_fft2_cuda.cpp',
+                    'dct_cuda_kernel.cu'
+                    ]),
+            CUDAExtension('idct_idxst_cuda', 
+                [
+                    'idct_idxst_cuda.cpp',
+                    'dct_cuda_kernel.cu'
+                    ]),
+            CUDAExtension('idxst_idct_cuda', 
+                [
+                    'idxst_idct_cuda.cpp',
                     'dct_cuda_kernel.cu'
                     ])
             ],

@@ -1,7 +1,7 @@
 /*
  * @Author: Jake Gu
  * @Date: 2019-04-02 16:34:45
- * @LastEditTime: 2019-04-30 16:12:44
+ * @LastEditTime: 2019-04-30 19:58:53
  */
 /**
  * @file   dct_cuda.h
@@ -227,5 +227,77 @@ void dct2dPostprocessCudaLauncher(
         const int N,
         const T *__restrict__ expkM, 
         const T *__restrict__ expkN
+        );
+
+//idct_idxst
+at::Tensor idct_idxst_forward(
+        at::Tensor x,
+        at::Tensor expkM, 
+        at::Tensor expkN);
+        
+template <typename T>
+void idct_idxstPreprocessCudaLauncher(
+        const T* x,
+        T* y,
+        const int M, 
+        const int N,
+        const T *__restrict__ expkM, 
+        const T *__restrict__ expkN
+        );
+
+template <typename T>
+void idct_idxstPostprocessCudaLauncher(
+        const T *x, 
+        T *y, 
+        const int M, 
+        const int N
+        );
+
+//idxst_idct
+at::Tensor idxst_idct_forward(
+        at::Tensor x,
+        at::Tensor expkM, 
+        at::Tensor expkN);
+        
+template <typename T>
+void idxst_idctPreprocessCudaLauncher(
+        const T* x,
+        T* y,
+        const int M, 
+        const int N,
+        const T *__restrict__ expkM, 
+        const T *__restrict__ expkN
+        );
+
+template <typename T>
+void idxst_idctPostprocessCudaLauncher(
+        const T *x, 
+        T *y, 
+        const int M, 
+        const int N
+        );
+
+//idct2_fft2
+at::Tensor idct2_fft2_forward(
+        at::Tensor x,
+        at::Tensor expkM, 
+        at::Tensor expkN);
+        
+template <typename T>
+void idct2_fft2PreprocessCudaLauncher(
+        const T* x,
+        T* y,
+        const int M, 
+        const int N,
+        const T *__restrict__ expkM, 
+        const T *__restrict__ expkN
+        );
+
+template <typename T>
+void idct2_fft2PostprocessCudaLauncher(
+        const T *x, 
+        T *y, 
+        const int M, 
+        const int N
         );
 #endif

@@ -1,20 +1,13 @@
-#!/usr/bin/env python
-# coding=UTF-8
-'''
-@Author: Jake Gu
-@Date: 2019-04-15 19:19:32
-@LastEditTime: 2019-04-30 16:35:10
-'''
+from dct.src import discrete_spectral_transform
+import random
+import numpy as np
+from scipy import fftpack
+import scipy
+import time
+from torch.autograd import Function, Variable
+import torch
 import sys
 sys.path.append('..')
-import torch
-from torch.autograd import Function, Variable
-import time
-import scipy
-from scipy import fftpack
-import numpy as np
-import random
-from dct.src import discrete_spectral_transform
 
 
 def gen_input_1d(N=512**2, dim=1):
@@ -43,8 +36,7 @@ def gen_output_2d(test_case="test_2d.dat"):
         lines = f.readlines()
         M = int(lines[0].strip())
         N = int(lines[1].strip())
-        x = np.resize(np.array([float(i)
-                                for i in lines[2:]]).astype(np.float64), [M, N])
+        x = np.resize(np.array([float(i) for i in lines[2:]]).astype(np.float64), [M, N])
 
     first_row = x[0, :]
     first_column = x[:, 0]
@@ -88,8 +80,6 @@ def dct_2d(x, M, N):
         f.write("{}\n".format(N))
         y = '\n'.join(map(lambda x: str(x), y.tolist()))
         f.write(y)
-        # for i in range(M*N):
-        #     f.write("{}\n".format(y[i]))
 
 
 def idct_2d(x, M, N):
@@ -166,36 +156,6 @@ def idct_idxst(x, M, N):
         f.write("{}\n".format(N))
         for i in range(M*N):
             f.write("{}\n".format(y[i]))
-
-
-def fft_2d(test_case="test_2d_fft.dat"):
-    runs = 2
-    with open(test_case, "r") as f:
-        lines = f.readlines()
-        M = int(lines[0].strip())
-        N = int(lines[1].strip())
-        x = np.resize(np.array([float(i)
-                                for i in lines[2:]]).astype(np.float64), [M, N])
-
-    x_r = np.zeros_like(x)
-    x_r[0:M//2, 0:N//2] = x[0:M:2, 0:N:2]
-    x_r[M//2:, 0:N//2] = x[M:0:-2, 0:N:2]
-    x_r[0:M//2, N//2:] = x[0:M:2, N:0:-2]
-    x_r[M//2:, N//2:] = x[M:0:-2, N:0:-2]
-    print(x)
-    print(x_r)
-    tt = time.time()
-    for i in range(runs):
-        y = fftpack.fft2(x_r)
-    print("CPU: scipy fft2 takes %.3f ms" % ((time.time()-tt)/runs*1000))
-    print(y)
-    y = np.resize(y, [M * N])
-    with open("result_2d_fft.dat", "w") as f:
-        f.write("{}\n".format(M))
-        f.write("{}\n".format(N))
-        for i in range(M*N):
-            f.write("{}\n".format(y[i].real))
-            f.write("{}\n".format(y[i].imag))
 
 
 if __name__ == "__main__":
