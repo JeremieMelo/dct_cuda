@@ -8,14 +8,14 @@
 
 template <typename T>
 __global__ void computeMulExpk(
-        const T* x, 
-        const T* expk, 
-        const int M, 
-        const int N, 
+        const T* x,
+        const T* expk,
+        const int M,
+        const int N,
         T* z
         )
 {
-    for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < M*N; i += blockDim.x * gridDim.x) 
+    for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < M*N; i += blockDim.x * gridDim.x)
     {
         int row = i/N; // row
         int col = i-row*N; // column
@@ -29,7 +29,7 @@ __global__ void computeMulExpk(
             //printf("x[%d]*expk[%d] + x[%d]*expk[%d] = z[%d]\n", j, col_2x, j+1, col_2x+1, i);
             z[i] = x[j]*expk[col_2x] + x[j+1]*expk[col_2x+1];
         }
-        else 
+        else
         {
             int j = row*fft_onesided_size_2x + (N<<1) - col_2x;
             //printf("x[%d]*expk[%d] + x[%d]*expk[%d] = z[%d]\n", j, col_2x, j+1, col_2x+1, i);
@@ -40,36 +40,36 @@ __global__ void computeMulExpk(
 
 template <typename T>
 void computeMulExpkCudaLauncher(
-        const T* x, 
-        const T* expk, 
-        const int M, 
-        const int N, 
+        const T* x,
+        const T* expk,
+        const int M,
+        const int N,
         T* z
         )
 {
-    const int thread_count = 1024; 
-    const int block_count = 32; 
+    const int thread_count = 1024;
+    const int block_count = 32;
 
     computeMulExpk<<<block_count, thread_count>>>(
-            x, 
-            expk, 
-            M, 
-            N, 
+            x,
+            expk,
+            M,
+            N,
             z
             );
 }
 
 template <typename T>
 __global__ void computeReorder(
-        const T* x, 
-        const int M, 
-        const int N, 
+        const T* x,
+        const int M,
+        const int N,
         T* y
         )
 {
-    for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < M*N; i += blockDim.x * gridDim.x) 
+    for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < M*N; i += blockDim.x * gridDim.x)
     {
-        int ii = i%N; 
+        int ii = i%N;
 
         if (ii < (N>>1))
         {
@@ -77,7 +77,7 @@ __global__ void computeReorder(
             //printf("x[%d] = y[%d]\n", i+ii, i);
             y[i] = x[i+ii];
         }
-        else 
+        else
         {
             // (N-i)*2-1
             //printf("x[%d] = y[%d]\n", i+N*2-ii*3-1, i);
@@ -88,67 +88,67 @@ __global__ void computeReorder(
 
 template <typename T>
 void computeReorderCudaLauncher(
-        const T* x, 
-        const int M, 
-        const int N, 
+        const T* x,
+        const int M,
+        const int N,
         T* y
         )
 {
-    const int thread_count = 1024; 
-    const int block_count = 32; 
+    const int thread_count = 1024;
+    const int block_count = 32;
 
     computeReorder<<<block_count, thread_count>>>(
-            x, 
-            M, 
-            N, 
+            x,
+            M,
+            N,
             y
             );
 }
 
 template <typename T>
 __global__ void computeVk(
-        const T* x, 
-        const T* expk, 
-        const int M, 
-        const int N, 
+        const T* x,
+        const T* expk,
+        const int M,
+        const int N,
         T* v
         )
 {
-    for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < M*(N/2+1); i += blockDim.x * gridDim.x) 
+    for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < M*(N/2+1); i += blockDim.x * gridDim.x)
     {
-        int ncol = N/2+1; 
+        int ncol = N/2+1;
         int row = i/ncol; // row
         int col = i-row*ncol; // column
         int col_2x = (col<<1);
 
-        // real 
+        // real
         T real = x[row*N+col];
         T imag = (col == 0)? 0 : -x[row*N+N-col];
 
         v[2*i] = real*expk[col_2x] - imag*expk[col_2x+1];
         // imag, x[N-i]
-        v[2*i+1] = real*expk[col_2x+1] + imag*expk[col_2x]; 
+        v[2*i+1] = real*expk[col_2x+1] + imag*expk[col_2x];
     }
 
 }
 
 template <typename T>
 void computeVkCudaLauncher(
-        const T* x, 
-        const T* expk, 
-        const int M, 
-        const int N, 
+        const T* x,
+        const T* expk,
+        const int M,
+        const int N,
         T* v
         )
 {
-    const int thread_count = 1024; 
-    const int block_count = 32; 
+    const int thread_count = 1024;
+    const int block_count = 32;
 
     computeVk<<<block_count, thread_count>>>(
-            x, 
-            expk, 
-            M, 
-            N, 
+            x,
+            expk,
+            M,
+            N,
             v
             );
 }
@@ -156,40 +156,40 @@ void computeVkCudaLauncher(
 
 template <typename T>
 __global__ void computeReorderReverse(
-        const T* y, 
-        const int M, 
-        const int N, 
+        const T* y,
+        const int M,
+        const int N,
         T* z
         )
 {
-    for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < M*N; i += blockDim.x * gridDim.x) 
+    for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < M*N; i += blockDim.x * gridDim.x)
     {
         int row = i/N; // row
         int col = i-row*N; // column
 
         //printf("z[%d] = y[%d]\n", i, (col&1)? (i-col*3/2+N-1) : (i-col/2));
         //z[i] = (col&1)? y[(i-col*3/2+N-1)] : y[(i-col/2)];
-        // according to the paper, it should be N - (col+1)/2 for col is odd 
-        // but it seems previous implementation accidentally matches this as well 
+        // according to the paper, it should be N - (col+1)/2 for col is odd
+        // but it seems previous implementation accidentally matches this as well
         z[i] = (col&1)? y[(i-col) + N - (col+1)/2] : y[(i-col/2)];
     }
 }
 
 template <typename T>
 void computeReorderReverseCudaLauncher(
-        const T* y, 
-        const int M, 
-        const int N, 
+        const T* y,
+        const int M,
+        const int N,
         T* z
         )
 {
-    const int thread_count = 1024; 
-    const int block_count = 32; 
+    const int thread_count = 1024;
+    const int block_count = 32;
 
     computeReorderReverse<<<block_count, thread_count>>>(
-            y, 
-            M, 
-            N, 
+            y,
+            M,
+            N,
             z
             );
 }
@@ -197,14 +197,14 @@ void computeReorderReverseCudaLauncher(
 template <typename T>
 __global__ void addX0AndScale(
         const T* x,
-        const int M, 
-        const int N, 
+        const int M,
+        const int N,
         T* y
         )
 {
-    for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < M*N; i += blockDim.x * gridDim.x) 
+    for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < M*N; i += blockDim.x * gridDim.x)
     {
-        int i0 = int(i/N)*N; 
+        int i0 = int(i/N)*N;
         y[i] = (y[i]+x[i0])*0.5;
     }
 }
@@ -212,49 +212,49 @@ __global__ void addX0AndScale(
 template <typename T>
 void addX0AndScaleCudaLauncher(
         const T* x,
-        const int M, 
-        const int N, 
+        const int M,
+        const int N,
         T* y
         )
 {
     addX0AndScale<<<32, 1024>>>(
-            x, 
-            M, 
-            N, 
+            x,
+            M,
+            N,
             y
             );
 }
 
-/// extends from addX0AndScale to merge scaling 
+/// extends from addX0AndScale to merge scaling
 template <typename T>
 __global__ void addX0AndScaleN(
         const T* x,
-        const int M, 
-        const int N, 
+        const int M,
+        const int N,
         T* y
         )
 {
-    for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < M*N; i += blockDim.x * gridDim.x) 
+    for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < M*N; i += blockDim.x * gridDim.x)
     {
-        int i0 = int(i/N)*N; 
-        // this is to match python implementation 
+        int i0 = int(i/N)*N;
+        // this is to match python implementation
         // normal way should be multiply by 0.25*N
-        y[i] = y[i]*0.25*N+x[i0]*0.5; 
+        y[i] = y[i]*0.25*N+x[i0]*0.5;
     }
 }
 
 template <typename T>
 void addX0AndScaleNCudaLauncher(
         const T* x,
-        const int M, 
-        const int N, 
+        const int M,
+        const int N,
         T* y
         )
 {
     addX0AndScaleN<<<32, 1024>>>(
-            x, 
-            M, 
-            N, 
+            x,
+            M,
+            N,
             y
             );
 }
@@ -262,32 +262,32 @@ void addX0AndScaleNCudaLauncher(
 template <typename T>
 __global__ void computePad(
         const T* x, // M*N
-        const int M, 
-        const int N, 
+        const int M,
+        const int N,
         T* z // M*2N
         )
 {
-    for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < M*N; i += blockDim.x * gridDim.x) 
+    for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < M*N; i += blockDim.x * gridDim.x)
     {
         int row = i/N; // row
         int col = i-row*N; // column
-        int j = row*(N<<1) + col; 
-        z[j] = x[i]; 
+        int j = row*(N<<1) + col;
+        z[j] = x[i];
     }
 }
 
 template <typename T>
 void computePadCudaLauncher(
         const T* x, // M*N
-        const int M, 
-        const int N, 
+        const int M,
+        const int N,
         T* z // M*2N
         )
 {
     computePad<<<32, 1024>>>(
-            x, 
-            M, 
-            N, 
+            x,
+            M,
+            N,
             z
             );
 }
@@ -295,18 +295,18 @@ void computePadCudaLauncher(
 template <typename T>
 __global__ void computeMulExpk_2N(
         const T* x, // M*(N+1)*2
-        const T* expk, 
-        const int M, 
-        const int N, 
+        const T* expk,
+        const int M,
+        const int N,
         T* z // M*N
         )
 {
-    for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < M*N; i += blockDim.x * gridDim.x) 
+    for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < M*N; i += blockDim.x * gridDim.x)
     {
         int row = i/N; // row
         int col = i-row*N; // column
         int col_2x = (col<<1);
-        int j = row*((N+1)<<1) + col_2x; 
+        int j = row*((N+1)<<1) + col_2x;
         z[i] = x[j]*expk[col_2x] + x[j+1]*expk[col_2x+1];
     }
 }
@@ -314,17 +314,17 @@ __global__ void computeMulExpk_2N(
 template <typename T>
 void computeMulExpk_2N_CudaLauncher(
         const T* x, // M*(N+1)*2
-        const T* expk, 
-        const int M, 
-        const int N, 
+        const T* expk,
+        const int M,
+        const int N,
         T* z // M*N
         )
 {
     computeMulExpk_2N<<<32, 1024>>>(
-            x, 
-            expk, 
-            M, 
-            N, 
+            x,
+            expk,
+            M,
+            N,
             z
             );
 }
@@ -332,19 +332,19 @@ void computeMulExpk_2N_CudaLauncher(
 template <typename T>
 __global__ void computeMulExpkAndPad_2N(
         const T* x, // M*N
-        const T* expk, 
-        const int M, 
-        const int N, 
+        const T* expk,
+        const int M,
+        const int N,
         T* z // M*2N*2
         )
 {
-    for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < M*N; i += blockDim.x * gridDim.x) 
+    for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < M*N; i += blockDim.x * gridDim.x)
     {
         int row = i/N; // row
         int col = i-row*N; // column
         int col_2x = (col<<1);
-        int j = row*(N<<2) + col_2x; 
-        z[j] = x[i]*expk[col_2x]; 
+        int j = row*(N<<2) + col_2x;
+        z[j] = x[i]*expk[col_2x];
         z[j+1] = x[i]*expk[col_2x+1];
     }
 }
@@ -352,51 +352,51 @@ __global__ void computeMulExpkAndPad_2N(
 template <typename T>
 void computeMulExpkAndPad_2N_CudaLauncher(
         const T* x, // M*N
-        const T* expk, 
-        const int M, 
-        const int N, 
+        const T* expk,
+        const int M,
+        const int N,
         T* z // M*2N*2
         )
 {
     computeMulExpkAndPad_2N<<<32, 1024>>>(
-            x, 
-            expk, 
-            M, 
-            N, 
+            x,
+            expk,
+            M,
+            N,
             z
             );
 }
 
-/// remove last N entries in each column 
+/// remove last N entries in each column
 template <typename T>
 __global__ void computeTruncation(
         const T* x, // M*2N
-        const int M, 
-        const int N, 
+        const int M,
+        const int N,
         T* z // M*N
         )
 {
-    for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < M*N; i += blockDim.x * gridDim.x) 
+    for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < M*N; i += blockDim.x * gridDim.x)
     {
         int row = i/N; // row
         int col = i-row*N; // column
-        int j = row*(N<<1) + col; 
-        z[i] = x[j]; 
+        int j = row*(N<<1) + col;
+        z[i] = x[j];
     }
 }
 
 template <typename T>
 void computeTruncationCudaLauncher(
         const T* x, // M*2N
-        const int M, 
-        const int N, 
+        const int M,
+        const int N,
         T* z // M*N
         )
 {
     computeTruncation<<<32, 1024>>>(
-            x, 
-            M, 
-            N, 
+            x,
+            M,
+            N,
             z
             );
 }
@@ -436,7 +436,7 @@ template <typename T>
 void dct2dPreprocessCudaLauncher(
                 const T* x,
                 T* y,
-                const int M, 
+                const int M,
                 const int N
                 )
 {
@@ -453,7 +453,7 @@ __global__ __launch_bounds__(1024, 10) void dct2dPostprocess(const T *x_raw, T *
     const ComplexType<T> *V = (ComplexType<T>*)x_raw;
     const ComplexType<T> *__restrict__ expkM = (ComplexType<T>*) expkM_raw;
     const ComplexType<T> *__restrict__ expkN = (ComplexType<T>*) expkN_raw;
-    
+
     const int wid = blockDim.x * blockIdx.x + threadIdx.x;
     const int hid = blockDim.y * blockIdx.y + threadIdx.y;
     if (hid < halfM && wid < halfN)
@@ -476,11 +476,11 @@ __global__ __launch_bounds__(1024, 10) void dct2dPostprocess(const T *x_raw, T *
 
             tmp = V[wid];
             y[wid] = RealPartOfMul(expkN[wid], tmp) * four_over_MN;
-            y[N - wid] = -1 * ImaginaryPartOfMul(expkN[wid], tmp) * four_over_MN;
+            y[N - wid] = -ImaginaryPartOfMul(expkN[wid], tmp) * four_over_MN;
 
             tmp = V[INDEX(halfM, wid, halfN + 1)];
             y[INDEX(halfM, wid, N)] = expkM[halfM].x * RealPartOfMul(expkN[wid], tmp) * four_over_MN;
-            y[INDEX(halfM, N - wid, N)] = -1 * expkM[halfM].x * ImaginaryPartOfMul(expkN[wid], tmp) * four_over_MN;
+            y[INDEX(halfM, N - wid, N)] = -expkM[halfM].x * ImaginaryPartOfMul(expkN[wid], tmp) * four_over_MN;
             break;
         }
 
@@ -490,7 +490,7 @@ __global__ __launch_bounds__(1024, 10) void dct2dPostprocess(const T *x_raw, T *
             tmp1 = V[INDEX(hid, 0, halfN + 1)];
             tmp2 = V[INDEX(M - hid, 0, halfN + 1)];
             tmp_up.x = expkM[hid].x * (tmp1.x + tmp2.x) + expkM[hid].y * (tmp2.y - tmp1.y);
-            tmp_down.x = -1 * expkM[hid].y * (tmp1.x + tmp2.x) + expkM[hid].x * (tmp2.y - tmp1.y);
+            tmp_down.x = -expkM[hid].y * (tmp1.x + tmp2.x) + expkM[hid].x * (tmp2.y - tmp1.y);
             y[INDEX(hid, 0, N)] = tmp_up.x * two_over_MN;
             y[INDEX(M - hid, 0, N)] = tmp_down.x * two_over_MN;
 
@@ -498,8 +498,8 @@ __global__ __launch_bounds__(1024, 10) void dct2dPostprocess(const T *x_raw, T *
             tmp2 = complexSubtract(V[INDEX(hid, halfN, halfN + 1)], V[INDEX(M - hid, halfN, halfN + 1)]);
             tmp_up.x = expkM[hid].x * tmp1.x - expkM[hid].y * tmp2.y;
             tmp_up.y = expkM[hid].x * tmp1.y + expkM[hid].y * tmp2.x;
-            tmp_down.x = -1 * expkM[hid].y * tmp1.x - expkM[hid].x * tmp2.y;
-            tmp_down.y = -1 * expkM[hid].y * tmp1.y + expkM[hid].x * tmp2.x;
+            tmp_down.x = -expkM[hid].y * tmp1.x - expkM[hid].x * tmp2.y;
+            tmp_down.y = -expkM[hid].y * tmp1.y + expkM[hid].x * tmp2.x;
             y[INDEX(hid, halfN, N)] = RealPartOfMul(expkN[halfN], tmp_up) * two_over_MN;
             y[INDEX(M - hid, halfN, N)] = RealPartOfMul(expkN[halfN], tmp_down) * two_over_MN;
             break;
@@ -512,12 +512,12 @@ __global__ __launch_bounds__(1024, 10) void dct2dPostprocess(const T *x_raw, T *
             tmp2 = complexSubtract(V[INDEX(hid, wid, halfN + 1)], V[INDEX(M - hid, wid, halfN + 1)]);
             tmp_up.x = expkM[hid].x * tmp1.x - expkM[hid].y * tmp2.y;
             tmp_up.y = expkM[hid].x * tmp1.y + expkM[hid].y * tmp2.x;
-            tmp_down.x = -1 * expkM[hid].y * tmp1.x - expkM[hid].x * tmp2.y;
-            tmp_down.y = -1 * expkM[hid].y * tmp1.y + expkM[hid].x * tmp2.x;
+            tmp_down.x = -expkM[hid].y * tmp1.x - expkM[hid].x * tmp2.y;
+            tmp_down.y = -expkM[hid].y * tmp1.y + expkM[hid].x * tmp2.x;
             y[INDEX(hid, wid, N)] = RealPartOfMul(expkN[wid], tmp_up) * two_over_MN;
             y[INDEX(M - hid, wid, N)] = RealPartOfMul(expkN[wid], tmp_down) * two_over_MN;
-            y[INDEX(hid, N - wid, N)] = -1 * ImaginaryPartOfMul(expkN[wid], tmp_up) * two_over_MN;
-            y[INDEX(M - hid, N - wid, N)] = -1 * ImaginaryPartOfMul(expkN[wid], tmp_down) * two_over_MN;
+            y[INDEX(hid, N - wid, N)] = -ImaginaryPartOfMul(expkN[wid], tmp_up) * two_over_MN;
+            y[INDEX(M - hid, N - wid, N)] = -ImaginaryPartOfMul(expkN[wid], tmp_down) * two_over_MN;
             break;
         }
 
@@ -530,11 +530,11 @@ __global__ __launch_bounds__(1024, 10) void dct2dPostprocess(const T *x_raw, T *
 
 template <typename T>
 void dct2dPostprocessCudaLauncher(
-                const T *x, 
-                T *y, 
-                const int M, 
+                const T *x,
+                T *y,
+                const int M,
                 const int N,
-                const T *__restrict__ expkM, 
+                const T *__restrict__ expkM,
                 const T *__restrict__ expkN
                 )
 {
@@ -644,9 +644,9 @@ template <typename T>
 void idct_idxstPreprocessCudaLauncher(
                 const T* x,
                 T* y,
-                const int M, 
+                const int M,
                 const int N,
-                const T *__restrict__ expkM, 
+                const T *__restrict__ expkM,
                 const T *__restrict__ expkN
                 )
 {
@@ -668,19 +668,19 @@ __global__ void idct_idxstPostprocess(const T *x, T *y, const int M, const int N
         {
         case 0:
             index = INDEX(((M - hid) << 1) - 1, ((N - wid) << 1) - 1, N);
-            y[index] = -0.5 * x[INDEX(hid, wid, N)];
+            y[index] = -x[INDEX(hid, wid, N)];
             break;
         case 1:
             index = INDEX(((M - hid) << 1) - 1, wid << 1, N);
-            y[index] = 0.5 * x[INDEX(hid, wid, N)];
+            y[index] = x[INDEX(hid, wid, N)];
             break;
         case 2:
             index = INDEX(hid << 1, ((N - wid) << 1) - 1, N);
-            y[index] = -0.5 * x[INDEX(hid, wid, N)];
+            y[index] = -x[INDEX(hid, wid, N)];
             break;
         case 3:
             index = INDEX(hid << 1, wid << 1, N);
-            y[index] = 0.5 * x[INDEX(hid, wid, N)];
+            y[index] = x[INDEX(hid, wid, N)];
             break;
         default:
             assert(0);
@@ -691,9 +691,9 @@ __global__ void idct_idxstPostprocess(const T *x, T *y, const int M, const int N
 
 template <typename T>
 void idct_idxstPostprocessCudaLauncher(
-                const T *x, 
-                T *y, 
-                const int M, 
+                const T *x,
+                T *y,
+                const int M,
                 const int N
                 )
 {
@@ -808,9 +808,9 @@ template <typename T>
 void idxst_idctPreprocessCudaLauncher(
                 const T* x,
                 T* y,
-                const int M, 
+                const int M,
                 const int N,
-                const T *__restrict__ expkM, 
+                const T *__restrict__ expkM,
                 const T *__restrict__ expkN
                 )
 {
@@ -832,19 +832,19 @@ __global__ void idxst_idctPostprocess(const T *x, T *y, const int M, const int N
         {
         case 0:
             index = INDEX(((M - hid) << 1) - 1, ((N - wid) << 1) - 1, N);
-            y[index] = -0.5 * x[INDEX(hid, wid, N)];
+            y[index] = -x[INDEX(hid, wid, N)];
             break;
         case 1:
             index = INDEX(((M - hid) << 1) - 1, wid << 1, N);
-            y[index] = -0.5 * x[INDEX(hid, wid, N)];
+            y[index] = -x[INDEX(hid, wid, N)];
             break;
         case 2:
             index = INDEX(hid << 1, ((N - wid) << 1) - 1, N);
-            y[index] = 0.5 * x[INDEX(hid, wid, N)];
+            y[index] = x[INDEX(hid, wid, N)];
             break;
         case 3:
             index = INDEX(hid << 1, wid << 1, N);
-            y[index] = 0.5 * x[INDEX(hid, wid, N)];
+            y[index] = x[INDEX(hid, wid, N)];
             break;
         default:
             assert(0);
@@ -855,9 +855,9 @@ __global__ void idxst_idctPostprocess(const T *x, T *y, const int M, const int N
 
 template <typename T>
 void idxst_idctPostprocessCudaLauncher(
-                const T *x, 
-                T *y, 
-                const int M, 
+                const T *x,
+                T *y,
+                const int M,
                 const int N
                 )
 {
@@ -975,9 +975,9 @@ template <typename T>
 void idct2_fft2PreprocessCudaLauncher(
                 const T* x,
                 T* y,
-                const int M, 
+                const int M,
                 const int N,
-                const T *__restrict__ expkM, 
+                const T *__restrict__ expkM,
                 const T *__restrict__ expkN
                 )
 {
@@ -1013,15 +1013,15 @@ __global__ void idct2_fft2Postprocess(const T *x, T *y, const int M, const int N
             assert(0);
             break;
         }
-        y[index] = x[INDEX(hid, wid, N)] / 4;
+        y[index] = x[INDEX(hid, wid, N)];
     }
 }
 
 template <typename T>
 void idct2_fft2PostprocessCudaLauncher(
-                const T *x, 
-                T *y, 
-                const int M, 
+                const T *x,
+                T *y,
+                const int M,
                 const int N
                 )
 {
@@ -1030,7 +1030,7 @@ void idct2_fft2PostprocessCudaLauncher(
     idct2_fft2Postprocess<T><<<gridSize, blockSize>>>(x, y, M, N, N/2);
 }
 
-// manually instantiate the template function 
+// manually instantiate the template function
 #define REGISTER_MULPEXPK_KERNEL_LAUNCHER(type) \
     void instantiateComputeMulExpkLauncher(\
         const type* x, \
@@ -1311,7 +1311,7 @@ REGISTER_IDCT_IDXSTPREPROCESS_KERNEL_LAUNCHER(double);
                 N \
                 ); \
     }
-    
+
 
 REGISTER_IDCT_IDXSTPOSTPROCESS_KERNEL_LAUNCHER(float);
 REGISTER_IDCT_IDXSTPOSTPROCESS_KERNEL_LAUNCHER(double);
@@ -1355,7 +1355,7 @@ REGISTER_IDXST_IDCTPREPROCESS_KERNEL_LAUNCHER(double);
                 N \
                 ); \
     }
-    
+
 
 REGISTER_IDXST_IDCTPOSTPROCESS_KERNEL_LAUNCHER(float);
 REGISTER_IDXST_IDCTPOSTPROCESS_KERNEL_LAUNCHER(double);
@@ -1399,7 +1399,7 @@ REGISTER_IDCT2_FFT2PREPROCESS_KERNEL_LAUNCHER(double);
                 N \
                 ); \
     }
-    
+
 
 REGISTER_IDCT2_FFT2POSTPROCESS_KERNEL_LAUNCHER(float);
 REGISTER_IDCT2_FFT2POSTPROCESS_KERNEL_LAUNCHER(double);

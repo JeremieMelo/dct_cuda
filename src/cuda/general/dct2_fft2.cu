@@ -176,7 +176,7 @@ __global__ __launch_bounds__(TPB *TPB, 10) void dct2d_postprocess_backup2(const 
             {
                 tmp1 = V[INDEX(M / 2, N - wid, halfN + 1)];
                 tmp.x = expkM[M / 2].x * tmp1.x;
-                tmp.y = -1 * expkM[M / 2].x * tmp1.y;
+                tmp.y = -expkM[M / 2].x * tmp1.y;
             }
             y[INDEX(M / 2, wid, N)] = RealPartOfMul(expkN[wid], tmp) * four_over_MN;
         }
@@ -189,8 +189,8 @@ __global__ __launch_bounds__(TPB *TPB, 10) void dct2d_postprocess_backup2(const 
                 tmp2 = V[INDEX(M - hid, wid, halfN + 1)];
                 tmp_up.x = expkM[hid].x * (tmp1.x + tmp2.x) + expkM[hid].y * (tmp2.y - tmp1.y);
                 tmp_up.y = expkM[hid].x * (tmp1.y + tmp2.y) + expkM[hid].y * (tmp1.x - tmp2.x);
-                tmp_down.x = -1 * expkM[hid].y * (tmp1.x + tmp2.x) + expkM[hid].x * (tmp2.y - tmp1.y);
-                tmp_down.y = -1 * expkM[hid].y * (tmp1.y + tmp2.y) + expkM[hid].x * (tmp1.x - tmp2.x);
+                tmp_down.x = -expkM[hid].y * (tmp1.x + tmp2.x) + expkM[hid].x * (tmp2.y - tmp1.y);
+                tmp_down.y = -expkM[hid].y * (tmp1.y + tmp2.y) + expkM[hid].x * (tmp1.x - tmp2.x);
             }
             else
             {
@@ -198,7 +198,7 @@ __global__ __launch_bounds__(TPB *TPB, 10) void dct2d_postprocess_backup2(const 
                 tmp2 = V[INDEX(hid, N - wid, halfN + 1)];
                 tmp_up.x = expkM[hid].x * (tmp1.x + tmp2.x) + expkM[hid].y * (tmp1.y - tmp2.y);
                 tmp_up.y = expkM[hid].y * (tmp1.x - tmp2.x) - expkM[hid].x * (tmp1.y + tmp2.y);
-                tmp_down.x = -1 * expkM[hid].y * (tmp1.x + tmp2.x) + expkM[hid].x * (tmp1.y - tmp2.y);
+                tmp_down.x = -expkM[hid].y * (tmp1.x + tmp2.x) + expkM[hid].x * (tmp1.y - tmp2.y);
                 tmp_down.y = expkM[hid].x * (tmp1.x - tmp2.x) + expkM[hid].y * (tmp1.y + tmp2.y);
             }
             y[INDEX(hid, wid, N)] = RealPartOfMul(expkN[wid], tmp_up) * two_over_MN;
@@ -234,11 +234,11 @@ __global__ __launch_bounds__(TPB *TPB, 10) void dct2d_postprocess(const TComplex
 
             tmp = V[wid];
             y[wid] = RealPartOfMul(expkN[wid], tmp) * four_over_MN;
-            y[N - wid] = -1 * ImaginaryPartOfMul(expkN[wid], tmp) * four_over_MN;
+            y[N - wid] = -ImaginaryPartOfMul(expkN[wid], tmp) * four_over_MN;
 
             tmp = V[INDEX(halfM, wid, halfN + 1)];
             y[INDEX(halfM, wid, N)] = expkM[halfM].x * RealPartOfMul(expkN[wid], tmp) * four_over_MN;
-            y[INDEX(halfM, N - wid, N)] = -1 * expkM[halfM].x * ImaginaryPartOfMul(expkN[wid], tmp) * four_over_MN;
+            y[INDEX(halfM, N - wid, N)] = -expkM[halfM].x * ImaginaryPartOfMul(expkN[wid], tmp) * four_over_MN;
             break;
         }
 
@@ -248,7 +248,7 @@ __global__ __launch_bounds__(TPB *TPB, 10) void dct2d_postprocess(const TComplex
             tmp1 = V[INDEX(hid, 0, halfN + 1)];
             tmp2 = V[INDEX(M - hid, 0, halfN + 1)];
             tmp_up.x = expkM[hid].x * (tmp1.x + tmp2.x) + expkM[hid].y * (tmp2.y - tmp1.y);
-            tmp_down.x = -1 * expkM[hid].y * (tmp1.x + tmp2.x) + expkM[hid].x * (tmp2.y - tmp1.y);
+            tmp_down.x = -expkM[hid].y * (tmp1.x + tmp2.x) + expkM[hid].x * (tmp2.y - tmp1.y);
             y[INDEX(hid, 0, N)] = tmp_up.x * two_over_MN;
             y[INDEX(M - hid, 0, N)] = tmp_down.x * two_over_MN;
 
@@ -256,8 +256,8 @@ __global__ __launch_bounds__(TPB *TPB, 10) void dct2d_postprocess(const TComplex
             tmp2 = complexSubtract(V[INDEX(hid, halfN, halfN + 1)], V[INDEX(M - hid, halfN, halfN + 1)]);
             tmp_up.x = expkM[hid].x * tmp1.x - expkM[hid].y * tmp2.y;
             tmp_up.y = expkM[hid].x * tmp1.y + expkM[hid].y * tmp2.x;
-            tmp_down.x = -1 * expkM[hid].y * tmp1.x - expkM[hid].x * tmp2.y;
-            tmp_down.y = -1 * expkM[hid].y * tmp1.y + expkM[hid].x * tmp2.x;
+            tmp_down.x = -expkM[hid].y * tmp1.x - expkM[hid].x * tmp2.y;
+            tmp_down.y = -expkM[hid].y * tmp1.y + expkM[hid].x * tmp2.x;
             y[INDEX(hid, halfN, N)] = RealPartOfMul(expkN[halfN], tmp_up) * two_over_MN;
             y[INDEX(M - hid, halfN, N)] = RealPartOfMul(expkN[halfN], tmp_down) * two_over_MN;
             break;
@@ -270,12 +270,12 @@ __global__ __launch_bounds__(TPB *TPB, 10) void dct2d_postprocess(const TComplex
             tmp2 = complexSubtract(V[INDEX(hid, wid, halfN + 1)], V[INDEX(M - hid, wid, halfN + 1)]);
             tmp_up.x = expkM[hid].x * tmp1.x - expkM[hid].y * tmp2.y;
             tmp_up.y = expkM[hid].x * tmp1.y + expkM[hid].y * tmp2.x;
-            tmp_down.x = -1 * expkM[hid].y * tmp1.x - expkM[hid].x * tmp2.y;
-            tmp_down.y = -1 * expkM[hid].y * tmp1.y + expkM[hid].x * tmp2.x;
+            tmp_down.x = -expkM[hid].y * tmp1.x - expkM[hid].x * tmp2.y;
+            tmp_down.y = -expkM[hid].y * tmp1.y + expkM[hid].x * tmp2.x;
             y[INDEX(hid, wid, N)] = RealPartOfMul(expkN[wid], tmp_up) * two_over_MN;
             y[INDEX(M - hid, wid, N)] = RealPartOfMul(expkN[wid], tmp_down) * two_over_MN;
-            y[INDEX(hid, N - wid, N)] = -1 * ImaginaryPartOfMul(expkN[wid], tmp_up) * two_over_MN;
-            y[INDEX(M - hid, N - wid, N)] = -1 * ImaginaryPartOfMul(expkN[wid], tmp_down) * two_over_MN;
+            y[INDEX(hid, N - wid, N)] = -ImaginaryPartOfMul(expkN[wid], tmp_up) * two_over_MN;
+            y[INDEX(M - hid, N - wid, N)] = -ImaginaryPartOfMul(expkN[wid], tmp_down) * two_over_MN;
             break;
         }
 

@@ -6,9 +6,9 @@
 
 // Adpated from idct2d_postprocess() with changes on sign and scale
 // if (wid % 2 == 1)
-//     new_output[hid][wid] = -0.5 * output[hid][wid];
+//     new_output[hid][wid] = -output[hid][wid];
 // else
-//     new_output[hid][wid] = 0.5 * output[hid][wid];
+//     new_output[hid][wid] = output[hid][wid];
 template <typename T>
 __global__ void idct_idxst_postprocess_backup(const T *x, T *y, const int M, const int N, const int halfN)
 {
@@ -22,19 +22,19 @@ __global__ void idct_idxst_postprocess_backup(const T *x, T *y, const int M, con
         {
         case 0:
             index = INDEX(2 * M - (hid + 1), N - (wid + 1) / 2, halfN);
-            y[INDEX(hid, wid, N)] = -0.5 * x[index];
+            y[INDEX(hid, wid, N)] = -x[index];
             break;
         case 1:
             index = INDEX(2 * M - (hid + 1), wid / 2, halfN);
-            y[INDEX(hid, wid, N)] = 0.5 * x[index];
+            y[INDEX(hid, wid, N)] = x[index];
             break;
         case 2:
             index = INDEX(hid, N - (wid + 1) / 2, halfN);
-            y[INDEX(hid, wid, N)] = -0.5 * x[index];
+            y[INDEX(hid, wid, N)] = -x[index];
             break;
         case 3:
             index = INDEX(hid, wid / 2, halfN);
-            y[INDEX(hid, wid, N)] = 0.5 * x[index];
+            y[INDEX(hid, wid, N)] = x[index];
             break;
         default:
             assert(0);
@@ -45,9 +45,9 @@ __global__ void idct_idxst_postprocess_backup(const T *x, T *y, const int M, con
 
 // Adpated from idct2d_postprocess() with changes on sign and scale
 // if (wid % 2 == 1)
-//     new_output[hid][wid] = -0.5 * output[hid][wid];
+//     new_output[hid][wid] = -output[hid][wid];
 // else
-//     new_output[hid][wid] = 0.5 * output[hid][wid];
+//     new_output[hid][wid] = output[hid][wid];
 template <typename T>
 __global__ void idct_idxst_postprocess(const T *x, T *y, const int M, const int N, const int halfN)
 {
@@ -61,19 +61,19 @@ __global__ void idct_idxst_postprocess(const T *x, T *y, const int M, const int 
         {
         case 0:
             index = INDEX(((M - hid) << 1) - 1, ((N - wid) << 1) - 1, N);
-            y[index] = -0.5 * x[INDEX(hid, wid, N)];
+            y[index] = -x[INDEX(hid, wid, N)];
             break;
         case 1:
             index = INDEX(((M - hid) << 1) - 1, wid << 1, N);
-            y[index] = 0.5 * x[INDEX(hid, wid, N)];
+            y[index] = x[INDEX(hid, wid, N)];
             break;
         case 2:
             index = INDEX(hid << 1, ((N - wid) << 1) - 1, N);
-            y[index] = -0.5 * x[INDEX(hid, wid, N)];
+            y[index] = -x[INDEX(hid, wid, N)];
             break;
         case 3:
             index = INDEX(hid << 1, wid << 1, N);
-            y[index] = 0.5 * x[INDEX(hid, wid, N)];
+            y[index] = x[INDEX(hid, wid, N)];
             break;
         default:
             assert(0);
@@ -351,7 +351,7 @@ void load_data(T *&data, T *&result, int &M, int &N)
     result = new T[M * N];
     while (input_file2 >> val)
     {
-        result[i] = val;
+        result[i] = val * 2; // scale factor
         i++;
     }
     printf("[I] data load done.\n");

@@ -616,13 +616,13 @@ def eval_idct2d(x, expk0, expk1, expkM, expkN, runs):
     tt = time.time()
     # with torch.autograd.profiler.profile(use_cuda=True) as prof:
     for i in range(runs):
-        y_N = idct2func.forward(x)/x.size(0)/x.size(1)/4
+        y_N = idct2func.forward(x)
     torch.cuda.synchronize()
     # print(prof)
     print("IDCT2_N Function takes %.7f ms" % ((time.time()-tt)/runs*1000))
 
     np.testing.assert_allclose(y_test.data.detach().cpu().numpy(),
-                               y_N.data.detach().cpu().numpy(), rtol=1e-6, atol=1e-5)
+                               y_N.data.detach().cpu().numpy()/x.size(0)/x.size(1), rtol=1e-6, atol=1e-5)
     print("")
 
 
@@ -646,7 +646,7 @@ def eval_idxt2d(x, expk0, expk1, expkM, expkN, runs):
 
     y_N.mul_(1./x.size(0)/x.size(1))
     np.testing.assert_allclose(y_test.data.detach().cpu().numpy(),
-                               y_N.data.detach().cpu().numpy(), rtol=1e-6, atol=1e-5)
+                               y_N.data.detach().cpu().numpy()*2, rtol=1e-6, atol=1e-5)
 
     dct2func = dct2_fft2.IDCT_IDXST(x.size(-2), x.size(-1), x.dtype, x.device, expkM, expkN)
     y = dct2func.forward(x)
@@ -667,7 +667,7 @@ def eval_idxt2d(x, expk0, expk1, expkM, expkN, runs):
 
     y_N.mul_(1./x.size(0)/x.size(1))
     np.testing.assert_allclose(y_test.data.detach().cpu().numpy(),
-                               y_N.data.detach().cpu().numpy(), rtol=1e-6, atol=1e-5)
+                               y_N.data.detach().cpu().numpy()*2, rtol=1e-6, atol=1e-5)
 
     print("")
 

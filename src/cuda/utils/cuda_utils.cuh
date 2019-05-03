@@ -254,7 +254,7 @@ inline __device__ cufftDoubleComplex complexConj(const cufftDoubleComplex &x)
 {
     cufftDoubleComplex res;
     res.x = x.x;
-    res.y = -1 * x.y;
+    res.y = -x.y;
     return res;
 }
 
@@ -262,7 +262,7 @@ inline __device__ cufftComplex complexConj(const cufftComplex &x)
 {
     cufftComplex res;
     res.x = x.x;
-    res.y = -1 * x.y;
+    res.y = -x.y;
     return res;
 }
 
@@ -270,7 +270,7 @@ inline __device__ cufftDoubleComplex complexMulConj(const cufftDoubleComplex &x,
 {
     cufftDoubleComplex res;
     res.x = x.x * y.x - x.y * y.y;
-    res.y = -1 * (x.x * y.y + x.y * y.x);
+    res.y = -(x.x * y.y + x.y * y.x);
     return res;
 }
 
@@ -278,7 +278,7 @@ inline __device__ cufftComplex complexMulConj(const cufftComplex &x, const cufft
 {
     cufftComplex res;
     res.x = x.x * y.x - x.y * y.y;
-    res.y = -1 * (x.x * y.y + x.y * y.x);
+    res.y = -(x.x * y.y + x.y * y.x);
     return res;
 }
 

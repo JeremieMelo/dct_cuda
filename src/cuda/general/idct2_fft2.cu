@@ -59,7 +59,7 @@ __global__ void idct2d_postprocess(const T *x, T *y, const int M, const int N, c
             assert(0);
             break;
         }
-        y[index] = x[INDEX(hid, wid, N)] / 4;
+        y[index] = x[INDEX(hid, wid, N)];
     }
 }
 
@@ -503,7 +503,7 @@ void load_data(T *&data, T *&result, int &M, int &N)
     result = new T[M * N];
     while (input_file2 >> val)
     {
-        result[i] = val;
+        result[i] = val * 4; // scale factor
         i++;
     }
     printf("[I] data load done.\n");
