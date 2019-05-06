@@ -19,7 +19,7 @@ import idct2_fft2_cuda
 
 
 def precompute_expk(N, dtype, device):
-    """ Compute 2*exp(-1j*pi*u/(2N)), but not exactly the same.
+    """ Compute 2*exp(-j*pi*u/(2N)), but not exactly the same.
     The actual return is 2*cos(pi*u/(2N)), 2*sin(pi*u/(2N)).
     This will make later multiplication easier.
     """
@@ -28,7 +28,7 @@ def precompute_expk(N, dtype, device):
     # cos, -sin
     # I use -sin because the real part requires subtraction
     # this will be easier for multiplication
-    expk = torch.stack([pik_by_2N.cos(), -1 * pik_by_2N.sin()], dim=-1)
+    expk = torch.stack([pik_by_2N.cos(), -pik_by_2N.sin()], dim=-1)
 
     return expk.contiguous()
 

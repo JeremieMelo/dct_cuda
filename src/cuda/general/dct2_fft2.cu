@@ -69,13 +69,13 @@ __global__ void precomputeExpk(cufftDoubleComplex *expkM, cufftDoubleComplex *ex
     if (tid <= M / 2)
     {
         int hid = tid;
-        cufftDoubleComplex W_h_4M = make_double2(cos(PI * hid / (2 * M)), -1 * sin(PI * hid / (M * 2)));
+        cufftDoubleComplex W_h_4M = make_double2(cos(PI * hid / (2 * M)), -sin(PI * hid / (M * 2)));
         expkM[hid] = W_h_4M;
     }
     if (tid <= N / 2)
     {
         int wid = tid;
-        cufftDoubleComplex W_w_4N = make_double2(cos(PI * wid / (2 * N)), -1 * sin(PI * wid / (N * 2)));
+        cufftDoubleComplex W_w_4N = make_double2(cos(PI * wid / (2 * N)), -sin(PI * wid / (N * 2)));
         expkN[wid] = W_w_4N;
     }
 }
@@ -86,13 +86,13 @@ __global__ void precomputeExpk(cufftComplex *expkM, cufftComplex *expkN, const i
     if (tid <= M / 2)
     {
         int hid = tid;
-        cufftComplex W_h_4M = make_float2(__cosf((float)PI * hid / (2 * M)), -1 * __sinf((float)PI * hid / (M * 2)));
+        cufftComplex W_h_4M = make_float2(__cosf((float)PI * hid / (2 * M)), -__sinf((float)PI * hid / (M * 2)));
         expkM[hid] = W_h_4M;
     }
     if (tid <= N / 2)
     {
         int wid = tid;
-        cufftComplex W_w_4N = make_float2(__cosf((float)PI * wid / (2 * N)), -1 * __sinf((float)PI * wid / (N * 2)));
+        cufftComplex W_w_4N = make_float2(__cosf((float)PI * wid / (2 * N)), -__sinf((float)PI * wid / (N * 2)));
         expkN[wid] = W_w_4N;
     }
 }
