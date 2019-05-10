@@ -145,7 +145,7 @@ void dct_2d_naive(const T *h_x, T *h_y, int M, int N)
     cudaMalloc((void **)&d_x, size);
     cudaMalloc((void **)&d_y, size);
     cudaMemset(d_y, 0, size);
-    cudaMemset(d_x, 0, size);
+    
     cudaMemcpy(d_x, h_x, size, cudaMemcpyHostToDevice);
 
     dim3 gridSize((N + TPB - 1) / TPB, (M + TPB - 1) / TPB, 1);
@@ -160,6 +160,8 @@ void dct_2d_naive(const T *h_x, T *h_y, int M, int N)
     // performe DCT along the rows and then along the columns
     // the two kernels both reads value along the rows, writes value to its transposition
     dct_2d_transpose_kernel_1<<<gridSize1, blockSize>>>(d_x, d_y, M, N);
+    cudaDeviceSynchronize();
+    cudaMemset(d_x, 0, size);
     dct_2d_transpose_kernel_2<<<gridSize2, blockSize>>>(d_x, d_y, M, N);
     #elif 1
     // performe DCT along the rows and then along the columns
