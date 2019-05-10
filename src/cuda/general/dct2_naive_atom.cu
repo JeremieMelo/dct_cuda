@@ -102,13 +102,13 @@ __global__ __launch_bounds__(1024, 2) void dct_2d_transpose_kernel_2(T *x, T *y,
 
     if (xtid < M && ytid < N && ztid < M)
     {
-        atomicAdd(&x[xtid * N + ytid], y[ytid * M + ztid] * cos(PI * (ztid + 0.5) / M * xtid));
+        atomicAdd(&x[xtid * N + ytid], y[ytid * M + ztid] * cos(PI * (ztid + 0.5) / M * xtid) / (M * N) * 4);
     }
-    __syncthreads();
-    if (xtid < M && ytid < N && ztid == 0)
-    {
-        x[xtid * N + ytid] = x[xtid * N + ytid] / (M * N) * 4;
-    }
+    // __syncthreads();
+    // if (xtid < M && ytid < N && ztid == 0)
+    // {
+    //     x[xtid * N + ytid] = x[xtid * N + ytid] / (M * N) * 4;
+    // }
 
 }
 
