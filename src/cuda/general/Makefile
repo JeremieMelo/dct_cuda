@@ -12,6 +12,10 @@ dct2_naive: dct2_naive.cu
 	mkdir -p $(BIN_DIR)
 	nvcc -w $(ARCH) $(OPTIONS) -o $(BIN_DIR)/$@ $<
 
+dct2_naive_atom: dct2_naive_atom.cu
+	mkdir -p $(BIN_DIR)
+	nvcc -w $(ARCH) $(OPTIONS) -o $(BIN_DIR)/$@ $<
+
 dct2_lee: dct2_lee.cu
 	mkdir -p $(BIN_DIR)
 	nvcc -w $(ARCH) $(OPTIONS) -o $(BIN_DIR)/$@ $<
