@@ -145,6 +145,7 @@ void dct_2d_naive(const T *h_x, T *h_y, int M, int N)
     cudaMalloc((void **)&d_x, size);
     cudaMalloc((void **)&d_y, size);
     cudaMemset(d_y, 0, size);
+    cudaMemset(d_x, 0, size);
     cudaMemcpy(d_x, h_x, size, cudaMemcpyHostToDevice);
 
     dim3 gridSize((N + TPB - 1) / TPB, (M + TPB - 1) / TPB, 1);
