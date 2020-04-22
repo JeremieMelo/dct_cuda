@@ -3,13 +3,13 @@
 #define TPB (16)
 
 template <typename T>
-__global__ void dct2d_preprocess_backup(const T *x, T *y, const int M, const int N)
+__global__ void dct2d_preprocess_backup(const T *x, T *y, const int M, const int N, const int halfM, const int halfN)
 {
     const int wid = blockDim.x * blockIdx.x + threadIdx.x;
     const int hid = blockDim.y * blockIdx.y + threadIdx.y;
     if (hid < M && wid < N)
     {
-        int cond = ((hid < M / 2) << 1) | (wid < N / 2);
+        int cond = ((hid < halfM) << 1) | (wid < halfN);
         int index;
         switch (cond)
         {
@@ -45,16 +45,16 @@ __global__ void dct2d_preprocess(const T *x, T *y, const int M, const int N, con
         switch (cond)
         {
         case 0:
-            index = INDEX(2 * M - (hid + 1), N - (wid + 1) / 2, halfN);
+            index = INDEX((M<<1) - (hid + 1), N - ((wid + 1) >> 1), halfN);
             break;
         case 1:
-            index = INDEX(2 * M - (hid + 1), wid / 2, halfN);
+            index = INDEX((M<<1) - (hid + 1), (wid >>1), halfN);
             break;
         case 2:
-            index = INDEX(hid, N - (wid + 1) / 2, halfN);
+            index = INDEX(hid, N - ((wid + 1) >> 1), halfN);
             break;
         case 3:
-            index = INDEX(hid, wid / 2, halfN);
+            index = INDEX(hid, (wid >> 1), halfN);
             break;
         default:
             break;
@@ -348,13 +348,14 @@ void dct_2d_fft(const T *h_x, T *h_y, const int M, const int N)
 
     Timer.Start();
     dct2d_preprocess<T><<<gridSize, blockSize>>>(d_x, d_y, M, N, N / 2);
+    // dct2d_preprocess_backup<T><<<gridSize, blockSize>>>(d_x, d_y, M, N, M / 2, N / 2);
     cudaDeviceSynchronize();
-
+    Timer.Stop();
     fft2D(d_y, scratch, plan);
 
     dct2d_postprocess<T, TComplex><<<gridSize2, blockSize>>>(scratch, d_y, M, N, M / 2, N / 2, 2. / (M * N), 4. / (M * N), expkM, expkN);
     cudaDeviceSynchronize();
-    Timer.Stop();
+
 
     cudaMemcpy(h_y, d_y, size, cudaMemcpyDeviceToHost);
 

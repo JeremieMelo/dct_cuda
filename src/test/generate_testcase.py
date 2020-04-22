@@ -55,9 +55,9 @@ def gen_output_2d(test_case="test_2d.dat"):
     first_column = torch.Tensor(first_column).to(torch.float64)
 
     dct_2d(x, M, N)
-    idct_2d(x, M, N)
-    idxst_idct(x, M, N)
-    idct_idxst(x, M, N)
+    # idct_2d(x, M, N)
+    # idxst_idct(x, M, N)
+    # idct_idxst(x, M, N)
 
     # idct2d_idcct2(x, M, N, first_row, first_column)
     # idcct2(x, M, N)
@@ -170,7 +170,7 @@ def idct_idxst(x, M, N):
 
 
 if __name__ == "__main__":
-    gen_input_2d(M=2048, N=4096)
+    gen_input_2d(M=8192, N=8192)
     gen_output_2d()
     # gen_input_1d(1024)
     # dct_1d()
